@@ -1,0 +1,43 @@
+name: %s
+description: ""
+mainPage: Головна
+language: uk
+
+# Типи статей. Поля визначають, які рядки показує інфобокс і в якому порядку.
+# Додавайте свої типи й поля: ключ (key) пишеться у frontmatter статті,
+# підпис (label) показується в інфобоксі.
+types:
+  character:
+    label: Персонаж
+    fields:
+      - { key: born, label: Народження }
+      - { key: died, label: Смерть }
+      - { key: species, label: Раса }
+      - { key: affiliation, label: Приналежність }
+      - { key: occupation, label: Рід занять }
+  location:
+    label: Локація
+    fields:
+      - { key: kind, label: Тип }
+      - { key: region, label: Регіон }
+      - { key: population, label: Населення }
+      - { key: ruler, label: Правитель }
+      - { key: founded, label: Засновано }
+  faction:
+    label: Фракція
+    fields:
+      - { key: founded, label: Засновано }
+      - { key: founder, label: Засновник }
+      - { key: leader, label: Лідер }
+      - { key: headquarters, label: Осідок }
+      - { key: ideology, label: Ідеологія }
+  event:
+    label: Подія
+    fields:
+      - { key: date, label: Дата }
+      - { key: place, label: Місце }
+      - { key: participants, label: Учасники }
+      - { key: result, label: Наслідки }
+  disambiguation:
+    label: Неоднозначність
+    fields: []

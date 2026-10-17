@@ -1,0 +1,236 @@
+:root {
+  --bg: #fbfaf8;
+  --bg-sidebar: #f2f0ec;
+  --bg-raised: #ffffff;
+  --bg-hover: #e8e5df;
+  --border: #e1ddd5;
+  --text: #24221f;
+  --text-muted: #6f6a62;
+  --accent: #4a5bd4;
+  --accent-soft: #e6e9fb;
+  --link: #3b4fc4;
+  --link-new: #c73a2b;
+  --mark: #fbe7a1;
+  --danger: #b42318;
+  --radius: 8px;
+  --mono: ui-monospace, 'JetBrains Mono', 'Cascadia Code', Menlo, Consolas, monospace;
+  --sans: system-ui, -apple-system, 'Segoe UI', Roboto, 'Noto Sans', sans-serif;
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #1b1a19;
+    --bg-sidebar: #222120;
+    --bg-raised: #272624;
+    --bg-hover: #32302d;
+    --border: #3a3835;
+    --text: #e9e6e1;
+    --text-muted: #9c968c;
+    --accent: #8f9cf5;
+    --accent-soft: #2c3050;
+    --link: #9aa7ff;
+    --link-new: #f2816f;
+    --mark: #6a5418;
+    --danger: #f97066;
+    color-scheme: dark;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: 15px/1.6 var(--sans);
+}
+
+a {
+  color: var(--link);
+  text-decoration: none;
+}
+a:hover {
+  text-decoration: underline;
+}
+a.new {
+  color: var(--link-new);
+}
+
+button,
+a.button {
+  display: inline-block;
+  font: inherit;
+  cursor: pointer;
+  border: 1px solid var(--border);
+  background: var(--bg-raised);
+  color: var(--text);
+  border-radius: 6px;
+  padding: 0.35rem 0.85rem;
+}
+button:hover,
+a.button:hover {
+  background: var(--bg-hover);
+  text-decoration: none;
+}
+button.primary,
+a.button.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--bg);
+  font-weight: 600;
+}
+button.primary:hover,
+a.button.primary:hover {
+  background: var(--accent);
+  filter: brightness(1.08);
+}
+button:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+input,
+textarea,
+select {
+  font: inherit;
+  color: var(--text);
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+input:focus-visible,
+textarea:focus-visible,
+button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+mark {
+  background: var(--mark);
+  color: inherit;
+  border-radius: 2px;
+}
+
+.muted {
+  color: var(--text-muted);
+}
+
+main.standalone {
+  max-width: 64rem;
+  margin: 0 auto;
+  padding: 3rem 1.25rem 4rem;
+}
+
+.page-title {
+  font-size: 2rem;
+  line-height: 1.2;
+  margin: 0 0 0.25rem;
+  font-weight: 650;
+  overflow-wrap: anywhere;
+}
+
+.letter-groups {
+  columns: 3 14rem;
+  column-gap: 2rem;
+}
+.letter-groups section {
+  break-inside: avoid;
+  margin-bottom: 1rem;
+}
+.letter-groups h3 {
+  margin: 0 0 0.25rem;
+  font-size: 1rem;
+  color: var(--text-muted);
+}
+.letter-groups ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+/* Rendered article content (HTML from the server, so not component-scoped). */
+.prose {
+  overflow-wrap: break-word;
+}
+.prose h2 {
+  overflow: hidden; /* stops the underline at a floated infobox */
+  font-size: 1.45rem;
+  margin: 1.8rem 0 0.6rem;
+  padding-bottom: 0.25rem;
+  border-bottom: 1px solid var(--border);
+  font-weight: 620;
+}
+.prose h3 {
+  font-size: 1.15rem;
+  margin: 1.4rem 0 0.4rem;
+}
+.prose h2,
+.prose h3,
+.prose h4 {
+  scroll-margin-top: 1rem;
+}
+.prose p,
+.prose ul,
+.prose ol {
+  margin: 0.6rem 0;
+}
+.prose img {
+  max-width: 100%;
+  border-radius: 6px;
+}
+.prose table {
+  border-collapse: collapse;
+  margin: 1rem 0;
+  display: block;
+  overflow-x: auto;
+}
+.prose th,
+.prose td {
+  border: 1px solid var(--border);
+  padding: 0.35rem 0.7rem;
+  text-align: left;
+}
+.prose th {
+  background: var(--bg-sidebar);
+}
+.prose blockquote {
+  margin: 1rem 0;
+  padding: 0.2rem 1rem;
+  border-left: 3px solid var(--border);
+  color: var(--text-muted);
+}
+.prose code {
+  font-family: var(--mono);
+  font-size: 0.88em;
+  background: var(--bg-sidebar);
+  padding: 0.1em 0.3em;
+  border-radius: 4px;
+}
+.prose pre {
+  background: var(--bg-sidebar);
+  padding: 0.8rem 1rem;
+  border-radius: var(--radius);
+  overflow-x: auto;
+}
+.prose pre code {
+  background: none;
+  padding: 0;
+}
+.prose hr {
+  border: none;
+  border-top: 1px solid var(--border);
+}
+.prose .footnotes {
+  font-size: 0.88rem;
+  color: var(--text-muted);
+  margin-top: 2rem;
+}
+.prose .missing-file {
+  color: var(--link-new);
+  font-family: var(--mono);
+  font-size: 0.85em;
+}
