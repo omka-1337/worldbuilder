@@ -1,14 +1,17 @@
 name: Попелясті Землі
 mainPage: Головна
+era: ЕП # підпис після року на таймлайні
 language: uk
 
 # Типи статей. Поля визначають, які рядки показує інфобокс і в якому порядку.
+# Поля з `type: date` потрапляють на таймлайн; статті типів з `event: true`
+# вважаються подіями і дають назву року на таймлайні.
 types:
   character:
     label: Персонаж
     fields:
-      - { key: born, label: Народження }
-      - { key: died, label: Смерть }
+      - { key: born, label: Народження, type: date }
+      - { key: died, label: Смерть, type: date }
       - { key: species, label: Раса }
       - { key: affiliation, label: Приналежність }
       - { key: occupation, label: Рід занять }
@@ -19,19 +22,20 @@ types:
       - { key: region, label: Регіон }
       - { key: population, label: Населення }
       - { key: ruler, label: Правитель }
-      - { key: founded, label: Засновано }
+      - { key: founded, label: Засновано, type: date }
   faction:
     label: Фракція
     fields:
-      - { key: founded, label: Засновано }
+      - { key: founded, label: Засновано, type: date }
       - { key: founder, label: Засновник }
       - { key: leader, label: Лідер }
       - { key: headquarters, label: Осідок }
       - { key: ideology, label: Ідеологія }
   event:
     label: Подія
+    event: true
     fields:
-      - { key: date, label: Дата }
+      - { key: date, label: Дата, type: date }
       - { key: place, label: Місце }
       - { key: participants, label: Учасники }
       - { key: result, label: Наслідки }

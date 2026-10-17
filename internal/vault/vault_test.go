@@ -67,7 +67,7 @@ func TestLinksAndHeadings(t *testing.T) {
 		t.Errorf("heading ids = %v", ids)
 	}
 	// Головна links both [[Аедрін Сірий]] and the alias [[Сірий Вовк]]: one backlink.
-	if !slices.Equal(view.Backlinks, []string{"Вальмор", "Головна", "Орден Попелу"}) {
+	if !slices.Equal(view.Backlinks, []string{"Битва під Тліню", "Вальмор", "Війна Попелу", "Головна", "Орден Попелу", "Падіння Сірої Вежі"}) {
 		t.Errorf("backlinks = %v", view.Backlinks)
 	}
 }
@@ -75,7 +75,7 @@ func TestLinksAndHeadings(t *testing.T) {
 func TestWantedAndCategories(t *testing.T) {
 	v := openExample(t)
 	wanted := v.Wanted()
-	if len(wanted) == 0 || wanted[0].Title != "Війна Попелу" {
+	if len(wanted) == 0 || wanted[0].Title != "Академія Тлінь" {
 		t.Fatalf("most wanted = %+v", wanted)
 	}
 	members := v.CategoryMembers("маги")
@@ -86,15 +86,15 @@ func TestWantedAndCategories(t *testing.T) {
 
 func TestSaveCreatesAndRejectsBadYAML(t *testing.T) {
 	v := openExample(t)
-	title, err := v.Save("Війна Попелу", []byte("---\ntype: event\n---\nВійна між [[Вальмор]]ом і пустками.\n"))
-	if err != nil || title != "Війна Попелу" {
+	title, err := v.Save("Академія Тлінь", []byte("---\ntype: location\n---\nШкола магів у [[Вальмор]]і.\n"))
+	if err != nil || title != "Академія Тлінь" {
 		t.Fatalf("save = %q, %v", title, err)
 	}
-	if _, err := os.Stat(filepath.Join(v.Root(), "Війна Попелу.md")); err != nil {
+	if _, err := os.Stat(filepath.Join(v.Root(), "Академія Тлінь.md")); err != nil {
 		t.Fatal(err)
 	}
 	for _, w := range v.Wanted() {
-		if w.Title == "Війна Попелу" {
+		if w.Title == "Академія Тлінь" {
 			t.Error("created page still listed as wanted")
 		}
 	}
@@ -127,5 +127,57 @@ func TestSplitFrontmatter(t *testing.T) {
 	fm, body = splitFrontmatter([]byte("---\nunterminated"))
 	if fm != nil || string(body) != "---\nunterminated" {
 		t.Errorf("unterminated: %q / %q", fm, body)
+	}
+}
+
+func TestTimeline(t *testing.T) {
+	v := openExample(t)
+	years := map[int]TimelineYear{}
+	var order []int
+	for _, y := range v.Timeline() {
+		years[y.Year] = y
+		order = append(order, y.Year)
+	}
+	if !slices.IsSorted(order) {
+		t.Errorf("years not sorted: %v", order)
+	}
+
+	// 343 has two battles: the longer article names the year.
+	y := years[343]
+	if len(y.Entries) != 2 || y.Main.Title != "Битва під Тліню" {
+		t.Errorf("343 = %+v", y)
+	}
+	// 389: an event outranks a longer non-event article (Аедрін died that year).
+	y = years[389]
+	if len(y.Entries) != 2 || y.Main.Title != "Падіння Сірої Вежі" || !y.Main.Event {
+		t.Errorf("389 = %+v", y)
+	}
+	// A year with no events is named by its longest article.
+	if y := years[312]; y.Main.Title != "Аедрін Сірий" || y.Main.Field != "Народження" {
+		t.Errorf("312 = %+v", y)
+	}
+	if y := years[340]; y.Main.EndYear != 347 {
+		t.Errorf("340 range end = %d", y.Main.EndYear)
+	}
+}
+
+func TestParseYears(t *testing.T) {
+	cases := []struct {
+		in         string
+		start, end int
+		ok         bool
+	}{
+		{"312 ЕП", 312, 0, true},
+		{"340–347 ЕП", 340, 347, true},
+		{"120 ЕП, [[Вальмор]]", 120, 0, true},
+		{"-40", -40, 0, true},
+		{"−200 — −150", -200, -150, true},
+		{"невідомо", 0, 0, false},
+	}
+	for _, c := range cases {
+		start, end, ok := parseYears(c.in)
+		if start != c.start || end != c.end || ok != c.ok {
+			t.Errorf("parseYears(%q) = %d, %d, %v", c.in, start, end, ok)
+		}
 	}
 }

@@ -35,6 +35,7 @@ func New(lib *library.Library, ui fs.FS) http.Handler {
 	mux.HandleFunc("GET "+w+"/categories", s.inWorld(s.categories))
 	mux.HandleFunc("GET "+w+"/categories/{name...}", s.inWorld(s.category))
 	mux.HandleFunc("GET "+w+"/wanted", s.inWorld(s.wanted))
+	mux.HandleFunc("GET "+w+"/timeline", s.inWorld(s.timeline))
 	mux.HandleFunc("GET /w/{world}/files/{path...}", s.inWorld(s.file))
 
 	mux.Handle("GET /", spa(ui))
@@ -134,6 +135,10 @@ func (s *server) category(w http.ResponseWriter, r *http.Request, v *vault.Vault
 
 func (s *server) wanted(w http.ResponseWriter, r *http.Request, v *vault.Vault) {
 	writeJSON(w, v.Wanted())
+}
+
+func (s *server) timeline(w http.ResponseWriter, r *http.Request, v *vault.Vault) {
+	writeJSON(w, v.Timeline())
 }
 
 // file serves an attachment such as an image. os.DirFS rejects ".." paths;

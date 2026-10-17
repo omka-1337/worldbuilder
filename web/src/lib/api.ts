@@ -2,6 +2,7 @@ export interface World {
   name: string
   description?: string
   mainPage: string
+  era?: string
   language: string
   types: Record<string, TypeDef>
 }
@@ -63,6 +64,23 @@ export interface Wanted {
   from: string[]
 }
 
+export interface TimelineEntry {
+  title: string
+  type?: string
+  typeLabel?: string
+  field: string
+  year: number
+  endYear?: number
+  text: number
+  event: boolean
+}
+
+export interface TimelineYear {
+  year: number
+  main: TimelineEntry
+  entries: TimelineEntry[]
+}
+
 export class NotFoundError extends Error {}
 
 async function check(r: Response): Promise<Response> {
@@ -102,6 +120,7 @@ export const api = {
   categories: () => get<Category[]>(`${w()}/categories`),
   category: (name: string) => get<Summary[]>(`${w()}/categories/${enc(name)}`),
   wanted: () => get<Wanted[]>(`${w()}/wanted`),
+  timeline: () => get<TimelineYear[]>(`${w()}/timeline`),
 
   // Resolves to the title the page ended up with.
   save: async (title: string, content: string) =>

@@ -1,10 +1,13 @@
 <script lang="ts">
+  import Icon from './Icon.svelte'
+  import SettingsDialog from './SettingsDialog.svelte'
   import { api, key, pageHref, worldHref, type Hit } from '../lib/api'
   import { router, navigate, titleFrom } from '../lib/router.svelte'
   import { store } from '../lib/store.svelte'
 
   let query = $state('')
   let hits = $state<Hit[]>([])
+  let settingsOpen = $state(false)
   let timer: ReturnType<typeof setTimeout>
 
   function onInput() {
@@ -41,17 +44,14 @@
     const prefix = new URL(worldHref(undefined, '/wiki/'), location.href).pathname
     return router.path.startsWith(prefix) ? key(titleFrom(router.path.slice(prefix.length))) : ''
   })
-  const at = (sub: string) => router.path === new URL(worldHref(undefined, sub), location.href).pathname
 </script>
 
 <aside class="sidebar">
-  <a class="back" href="/">← Усі світи</a>
-  <a class="world" href={worldHref()}>{store.world?.name ?? ''}</a>
-
   <form class="search" onsubmit={onSubmit}>
     <input
       type="search"
       placeholder="Пошук статей…"
+      aria-label="Пошук статей"
       bind:value={query}
       oninput={onInput}
       onkeydown={(e) => e.key === 'Escape' && reset()}
@@ -65,13 +65,6 @@
     {/if}
   </form>
 
-  <nav>
-    <a href={worldHref(undefined, '/new')} class="new-page">+ Нова стаття</a>
-    <a href={worldHref(undefined, '/pages')} class:active={at('/pages')}>Усі статті</a>
-    <a href={worldHref(undefined, '/categories')} class:active={at('/categories')}>Категорії</a>
-    <a href={worldHref(undefined, '/wanted')} class:active={at('/wanted')}>Потрібні статті</a>
-  </nav>
-
   <h2>Статті <span class="muted">{store.pages.length}</span></h2>
   <ul class="pages">
     {#each store.pages as page (page.title)}
@@ -80,7 +73,19 @@
       </li>
     {/each}
   </ul>
+
+  <footer>
+    <a class="world" href={worldHref()} title="Головна сторінка світу">{store.world?.name ?? ''}</a>
+    <button class="icon" onclick={() => (settingsOpen = true)} title="Налаштування" aria-label="Налаштування">
+      <Icon name="settings" size={18} />
+    </button>
+    <a class="icon" href="/" title="Вийти зі світу" aria-label="Вийти зі світу">
+      <Icon name="exit" size={18} />
+    </a>
+  </footer>
 </aside>
+
+<SettingsDialog bind:open={settingsOpen} />
 
 <style>
   .sidebar {
@@ -89,23 +94,11 @@
     height: 100vh;
     display: flex;
     flex-direction: column;
-    gap: 0.75rem;
-    padding: 1.25rem 0.9rem;
+    gap: 0.6rem;
+    padding: 0.75rem 0.75rem 0;
     background: var(--bg-sidebar);
-    border-right: 1px solid var(--border);
+    border-inline: 1px solid var(--border);
     overflow: hidden;
-  }
-  .back {
-    font-size: 0.82rem;
-    color: var(--text-muted);
-    padding: 0 0.4rem;
-    margin-bottom: -0.5rem;
-  }
-  .world {
-    font-weight: 700;
-    font-size: 1.1rem;
-    color: var(--text);
-    padding: 0 0.4rem;
   }
   .search {
     position: relative;
@@ -138,33 +131,6 @@
     background: var(--bg-hover);
     text-decoration: none;
   }
-  nav {
-    display: flex;
-    flex-direction: column;
-  }
-  nav a,
-  .pages a {
-    display: block;
-    padding: 0.2rem 0.5rem;
-    border-radius: 5px;
-    color: var(--text);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-  nav a:hover,
-  .pages a:hover {
-    background: var(--bg-hover);
-    text-decoration: none;
-  }
-  a.active {
-    background: var(--accent-soft);
-    color: var(--accent);
-  }
-  .new-page {
-    color: var(--accent) !important;
-    font-weight: 600;
-  }
   h2 {
     font-size: 0.75rem;
     text-transform: uppercase;
@@ -179,5 +145,55 @@
     overflow-y: auto;
     flex: 1;
     font-size: 0.93rem;
+  }
+  .pages a {
+    display: block;
+    padding: 0.2rem 0.5rem;
+    border-radius: 5px;
+    color: var(--text);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .pages a:hover {
+    background: var(--bg-hover);
+    text-decoration: none;
+  }
+  .pages a.active {
+    background: var(--accent-soft);
+    color: var(--accent);
+  }
+
+  footer {
+    display: flex;
+    align-items: center;
+    gap: 0.15rem;
+    margin: 0 -0.75rem;
+    padding: 0.55rem 0.6rem 0.55rem 1.25rem;
+    border-top: 1px solid var(--border);
+  }
+  .world {
+    flex: 1;
+    min-width: 0;
+    font-weight: 700;
+    color: var(--text);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .icon {
+    display: grid;
+    place-items: center;
+    width: 2rem;
+    height: 2rem;
+    padding: 0;
+    border: none;
+    border-radius: 6px;
+    background: none;
+    color: var(--text-muted);
+  }
+  .icon:hover {
+    background: var(--bg-hover);
+    color: var(--text);
   }
 </style>

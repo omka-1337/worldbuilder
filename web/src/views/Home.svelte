@@ -2,12 +2,15 @@
   import { api, worldHref, type WorldInfo } from '../lib/api'
   import { navigate } from '../lib/router.svelte'
   import { ago, plural } from '../lib/format'
+  import Icon from '../components/Icon.svelte'
+  import SettingsDialog from '../components/SettingsDialog.svelte'
 
   let root = $state('')
   let worlds = $state<WorldInfo[] | null>(null)
   let error = $state('')
   let name = $state('')
   let creating = $state(false)
+  let settingsOpen = $state(false)
 
   document.title = 'Worldbuilder'
   api
@@ -33,6 +36,9 @@
 
 <main class="standalone">
   <header>
+    <button class="settings" onclick={() => (settingsOpen = true)} title="Налаштування" aria-label="Налаштування">
+      <Icon name="settings" />
+    </button>
     <h1 class="page-title">Worldbuilder</h1>
     <p class="muted">Оберіть світ, над яким працюватимете, або створіть новий.</p>
   </header>
@@ -69,9 +75,25 @@
   {/if}
 </main>
 
+<SettingsDialog bind:open={settingsOpen} />
+
 <style>
   header {
+    position: relative;
     margin-bottom: 2rem;
+  }
+  .settings {
+    position: absolute;
+    top: 0;
+    right: 0;
+    display: grid;
+    padding: 0.4rem;
+    border: none;
+    background: none;
+    color: var(--text-muted);
+  }
+  .settings:hover {
+    color: var(--text);
   }
   .grid {
     display: grid;

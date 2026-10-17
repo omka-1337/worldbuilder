@@ -3,6 +3,9 @@
   import { router, titleFrom } from '../lib/router.svelte'
   import { store, refresh, reset } from '../lib/store.svelte'
   import Sidebar from './Sidebar.svelte'
+  import Ribbon from './Ribbon.svelte'
+  import Timeline from '../views/Timeline.svelte'
+  import { prefs } from '../lib/prefs.svelte'
   import Article from '../views/Article.svelte'
   import Editor from '../views/Editor.svelte'
   import AllPages from '../views/AllPages.svelte'
@@ -27,7 +30,7 @@
 
   type Route =
     | { name: 'article' | 'edit' | 'category'; arg: string }
-    | { name: 'pages' | 'categories' | 'wanted' | 'search' | 'new' | 'unknown' }
+    | { name: 'pages' | 'categories' | 'wanted' | 'search' | 'new' | 'timeline' | 'unknown' }
 
   const route: Route = $derived.by(() => {
     const [first = '', ...more] = rest
@@ -46,6 +49,7 @@
       case 'wanted':
       case 'search':
       case 'new':
+      case 'timeline':
         return { name: first }
     }
     return { name: 'unknown' }
@@ -64,10 +68,11 @@
     <p><a href="/">До списку світів</a></p>
   </main>
 {:else}
-  <div class="layout" class:menu-open={menuOpen}>
+  <div class="layout ribbon-{prefs.ribbon}" class:menu-open={menuOpen}>
     <button class="menu-toggle" onclick={() => (menuOpen = !menuOpen)} aria-label="Меню">☰</button>
+    <Ribbon />
     <Sidebar />
-    <main>
+    <main class:full={route.name === 'timeline'}>
       {#if loadError}
         <p class="error">Не вдалося з'єднатися з сервером: {loadError}</p>
       {:else if !store.world}
@@ -88,6 +93,8 @@
         <SearchResults />
       {:else if route.name === 'new'}
         <NewPage />
+      {:else if route.name === 'timeline'}
+        <Timeline />
       {:else}
         <h1 class="page-title">Сторінку не знайдено</h1>
       {/if}
@@ -96,14 +103,32 @@
 {/if}
 
 <style>
+  /* The tools ribbon sits on whichever edge the user dragged it to. */
   .layout {
     display: grid;
-    grid-template-columns: 17rem minmax(0, 1fr);
     min-height: 100vh;
   }
+  .layout.ribbon-left {
+    grid-template-columns: 3rem 17rem minmax(0, 1fr);
+    grid-template-areas: 'ribbon sidebar main';
+  }
+  .layout.ribbon-right {
+    grid-template-columns: 17rem minmax(0, 1fr) 3rem;
+    grid-template-areas: 'sidebar main ribbon';
+  }
+  .layout :global(.ribbon) {
+    grid-area: ribbon;
+  }
+  .layout :global(.sidebar) {
+    grid-area: sidebar;
+  }
   main {
+    grid-area: main;
     padding: 2rem clamp(1rem, 4vw, 3.5rem) 4rem;
     min-width: 0;
+  }
+  main.full {
+    padding: 0;
   }
   .error {
     color: var(--danger);
@@ -113,11 +138,16 @@
   }
 
   @media (max-width: 800px) {
-    .layout {
+    .layout.ribbon-left,
+    .layout.ribbon-right {
       grid-template-columns: minmax(0, 1fr);
+      grid-template-areas: 'main';
     }
     main {
-      padding: 3.5rem 1rem 3rem;
+      padding: 3.5rem 1rem 5rem;
+    }
+    main.full {
+      padding: 0 0 3.2rem;
     }
     .menu-toggle {
       display: block;

@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 	"unicode"
+	"unicode/utf8"
 
 	"github.com/goccy/go-yaml"
 )
@@ -23,6 +24,7 @@ type Page struct {
 	Body       []byte  // Markdown after the frontmatter
 	ModTime    time.Time
 
+	textLen    int      // characters in the body, how much has been written
 	links      []string // wikilink targets as written, body and infobox
 	searchRaw  string   // title, aliases, infobox and body, for snippets
 	searchText string   // searchRaw lowercased, for matching
@@ -73,6 +75,7 @@ func parsePage(rel string, raw []byte) (*Page, error) {
 	if p.Title == "" {
 		p.Title = strings.TrimSuffix(path.Base(rel), path.Ext(rel))
 	}
+	p.textLen = utf8.RuneCount(bytes.TrimSpace(body))
 	for _, item := range fm.Infobox {
 		p.Infobox = append(p.Infobox, Field{
 			Key:   fmt.Sprint(item.Key),

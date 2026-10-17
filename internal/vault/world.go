@@ -15,6 +15,7 @@ type World struct {
 	Name        string             `yaml:"name" json:"name"`
 	Description string             `yaml:"description" json:"description,omitempty"`
 	MainPage    string             `yaml:"mainPage" json:"mainPage"`
+	Era         string             `yaml:"era" json:"era,omitempty"` // shown after years, e.g. "ЕП"
 	Language    string             `yaml:"language" json:"language"`
 	Types       map[string]TypeDef `yaml:"types" json:"types"`
 }
@@ -22,12 +23,14 @@ type World struct {
 // TypeDef describes an article type and the infobox fields it offers.
 type TypeDef struct {
 	Label  string     `yaml:"label" json:"label"`
+	Event  bool       `yaml:"event" json:"event,omitempty"` // articles of this type are timeline events
 	Fields []FieldDef `yaml:"fields" json:"fields"`
 }
 
 type FieldDef struct {
 	Key   string `yaml:"key" json:"key"`
 	Label string `yaml:"label" json:"label"`
+	Type  string `yaml:"type" json:"type,omitempty"` // "date" puts the article on the timeline
 }
 
 const worldFile = "world.yaml"
