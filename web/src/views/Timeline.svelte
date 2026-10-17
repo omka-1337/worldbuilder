@@ -16,7 +16,7 @@
   let to = $state(1)
 
   const PAD = 70 // px kept clear at both ends of the axis
-  const FOCUS = 0.78 // where a selected year settles, as a fraction of the stage
+  const FOCUS = 0.5 // a selected year settles in the middle of the visible stage
 
   const era = $derived(store.world?.era ? ' ' + store.world.era : '')
   const selectedYear = $derived(router.query.has('year') ? Number(router.query.get('year')) : null)
@@ -53,6 +53,15 @@
   const name = (e: TimelineEntry) => (e.event ? e.title : `${e.title} (${e.field.toLowerCase()})`)
   const range = (e: TimelineEntry) => `${e.year}${e.endYear ? '–' + e.endYear : ''}${era}`
 
+  const labelHalf = (y: TimelineYear) => Math.min(170, Math.max(name(y.main).length, 8) * 7.4) / 2 + 8
+
+  // Shifts a label sideways so it stays inside the stage near either edge.
+  const labelShift = (y: TimelineYear) => {
+    const cx = x(y.year)
+    const half = labelHalf(y)
+    return Math.max(half - cx, 0) - Math.max(cx + half - width, 0)
+  }
+
   // Labels compete for space: the busiest years claim a spot first, above
   // the axis, then below; a label that fits nowhere shows only on hover.
   const placement = $derived.by(() => {
@@ -61,9 +70,10 @@
     if (!years) return out
     const byWeight = [...years].sort((a, b) => b.entries.length - a.entries.length || b.main.text - a.main.text)
     for (const y of byWeight) {
-      const cx = x(y.year)
-      if (cx < -100 || cx > width + 100) continue
-      const half = Math.min(170, Math.max(name(y.main).length, 8) * 7.4) / 2 + 8
+      const dot = x(y.year)
+      if (dot < 0 || dot > width) continue // off-screen dots get no label
+      const cx = dot + labelShift(y)
+      const half = labelHalf(y)
       for (const row of [0, 1] as const) {
         if (rows[row].every(([a, b]) => cx + half < a || cx - half > b)) {
           rows[row].push([cx - half, cx + half])
@@ -234,7 +244,7 @@
           aria-label="{y.year}{era}: {name(y.main)}, {plural(y.entries.length, ['подія', 'події', 'подій'])}"
         >
           <span class="dot"></span>
-          <span class="label" class:below={row === 1}>
+          <span class="label" class:below={row === 1} style:--shift="{labelShift(y)}px">
             <span class="year">{y.year}{era}</span>
             <span class="name">{name(y.main)}</span>
           </span>
@@ -397,7 +407,7 @@
     position: absolute;
     left: 0;
     bottom: calc(var(--r) + 12px);
-    transform: translateX(-50%);
+    transform: translateX(calc(-50% + var(--shift, 0px)));
     display: flex;
     flex-direction: column;
     align-items: center;
