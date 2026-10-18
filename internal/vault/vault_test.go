@@ -759,6 +759,13 @@ func TestObsidianSyntax(t *testing.T) {
 
 > Звичайна цитата.
 
+> “Цитата з підписом.”
+>
+> — із виступу в парламенті
+
+> Цитата, що лише містить
+> — тире всередині.
+
 | Хто | Де |
 | --- | --- |
 | [[Аедрін Сірий\|Аедрін]] | [[Вальмор]] |
@@ -779,11 +786,15 @@ func TestObsidianSyntax(t *testing.T) {
 		`<p class="callout-title">Не канон</p>`,
 		`<p class="callout-title">Питання</p>`,
 		`<blockquote>`, // a plain quote stays a quote
+		`<p class="quote-source">— із виступу в парламенті</p>`,
 		`class="align-left"`, `width="300"`, `alt="Підпис"`,
 	} {
 		if !strings.Contains(h, want) {
 			t.Errorf("missing %s in:\n%s", want, h)
 		}
+	}
+	if strings.Count(h, "quote-source") != 1 {
+		t.Errorf("only a closing paragraph that starts with a dash is a source:\n%s", h)
 	}
 	if strings.Contains(h, "[!warning]") || strings.Contains(h, "[!question]") {
 		t.Errorf("callout marker left in output:\n%s", h)

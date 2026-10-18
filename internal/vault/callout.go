@@ -1,6 +1,7 @@
 package vault
 
 import (
+	"bytes"
 	"regexp"
 	"strings"
 
@@ -55,19 +56,40 @@ func (calloutTransformer) Transform(doc *ast.Document, reader text.Reader, _ par
 		return ast.WalkContinue, nil
 	})
 	for _, q := range quotes {
-		convertCallout(q, src)
+		if !convertCallout(q, src) {
+			markSource(q, src)
+		}
 	}
 }
 
-func convertCallout(q *ast.Blockquote, src []byte) {
+// quoteSource matches the line that names a quote's source: it starts with a
+// dash ("— from a speech in parliament").
+var quoteSource = regexp.MustCompile(`^(—|–|―|--)\s*\S`)
+
+// markSource gives a plain quote's last paragraph the class quote-source
+// when it is such a line, so it shows as the quote's attribution.
+func markSource(q *ast.Blockquote, src []byte) {
+	para, ok := q.LastChild().(*ast.Paragraph)
+	if !ok || para == q.FirstChild() || para.Lines().Len() == 0 {
+		return
+	}
+	line := para.Lines().At(0)
+	if quoteSource.Match(bytes.TrimSpace(line.Value(src))) {
+		para.SetAttributeString("class", []byte("quote-source"))
+	}
+}
+
+// convertCallout makes q a callout if it starts with a [!type] marker and
+// reports whether it did.
+func convertCallout(q *ast.Blockquote, src []byte) bool {
 	para, ok := q.FirstChild().(*ast.Paragraph)
 	if !ok || para.Lines().Len() == 0 {
-		return
+		return false
 	}
 	first := para.Lines().At(0)
 	m := calloutStart.FindStringSubmatch(strings.TrimSpace(string(first.Value(src))))
 	if m == nil {
-		return
+		return false
 	}
 	kind := strings.ToLower(m[1])
 	title := strings.TrimSpace(m[2])
@@ -104,6 +126,7 @@ func convertCallout(q *ast.Blockquote, src []byte) {
 	head.SetAttributeString("class", []byte("callout-title"))
 	head.AppendChild(head, ast.NewString([]byte(title)))
 	q.InsertBefore(q, q.FirstChild(), head)
+	return true
 }
 
 // inlineStart is the source offset where an inline node begins, found from
