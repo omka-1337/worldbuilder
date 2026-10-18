@@ -184,13 +184,14 @@
 {/if}
 
 <style>
+  /* The article takes all the room there is; the contents keep a column. */
   .article {
     display: grid;
-    grid-template-columns: minmax(0, 52rem);
+    grid-template-columns: minmax(0, 1fr);
     gap: 3rem;
   }
   .article.has-toc {
-    grid-template-columns: minmax(0, 52rem) 14rem;
+    grid-template-columns: minmax(0, 1fr) 14rem;
   }
   .crumbs {
     display: flex;
@@ -312,7 +313,6 @@
   }
   .banner {
     height: clamp(9rem, 22vh, 15rem);
-    max-width: calc(52rem + 3rem + 14rem);
     margin-bottom: 1.25rem;
     border-radius: 10px;
     background-size: cover;
@@ -398,7 +398,7 @@
 
   @media (max-width: 1150px) {
     .article.has-toc {
-      grid-template-columns: minmax(0, 52rem);
+      grid-template-columns: minmax(0, 1fr);
     }
     .toc {
       display: none;
