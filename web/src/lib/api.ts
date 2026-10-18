@@ -226,6 +226,21 @@ async function send<T>(method: string, url: string, body: unknown): Promise<T> {
   return r.json()
 }
 
+// A file that differs from the world's last saved version.
+export interface Change {
+  path: string
+  state: 'added' | 'modified' | 'deleted'
+  title?: string // the article in it, if it is one that exists now
+}
+
+// One saved state of the world (a Git commit).
+export interface Version {
+  hash: string
+  message: string
+  author: string
+  when: string
+}
+
 export const api = {
   worlds: () => get<{ root: string; worlds: WorldInfo[] }>('/api/worlds'),
   createWorld: (name: string) => send<WorldInfo>('POST', '/api/worlds', { name }),
@@ -261,6 +276,11 @@ export const api = {
   previewCalendar: (calendar: Calendar, sample: string) =>
     send<CalendarPreview>('POST', `${w()}/calendar/preview`, { calendar, sample }),
   saveTypes: (types: TypeInfo[]) => send<TypeInfo[]>('PUT', `${w()}/types`, types),
+
+  changes: () => get<Change[]>(`${w()}/changes`),
+  versions: (limit = 50) => get<Version[]>(`${w()}/versions?limit=${limit}`),
+  // Saves every change as a new version.
+  saveVersion: (message: string) => send<Version>('POST', `${w()}/versions`, { message }),
 
   source: (title: string) => get<Source>(`${w()}/source/${enc(title)}`),
   // Resolves to the title the page ended up with.

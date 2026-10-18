@@ -94,11 +94,21 @@ periods run up to it. A world without a calendar counts plain years.
 Type and field keys are generated once
 from their names and never change, so renaming keeps articles working.
 
+Every world is also a Git repository, created with the world (or the first
+time an older world is opened) and holding a first version of everything in
+it; deleted articles in `.trash/` stay out of it. Git runs inside the app,
+so nothing needs installing. The bottom of the tools panel shows how many
+files have changed since the last saved version; the "Versions" page lists
+them and saves a new version with a description, written by the author or
+made from the changes. Versions are signed with the Git identity from the
+user's global Git config when there is one.
+
 ## Code layout
 
 - `cmd/worldbuilder` — entry point
 - `internal/library` — the library of worlds: listing, creating, opening
 - `internal/vault` — one world: reading files, the link index, Markdown
   rendering, timeline, article types
+- `internal/history` — a world's versions, kept in Git (go-git)
 - `internal/server` — JSON API and serving the UI
 - `web` — the UI (Svelte), embedded into the binary with `go:embed`

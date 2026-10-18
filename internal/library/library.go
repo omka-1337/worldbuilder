@@ -17,6 +17,7 @@ import (
 	"sync"
 	"time"
 
+	"worldbuilder/internal/history"
 	"worldbuilder/internal/vault"
 )
 
@@ -47,8 +48,9 @@ type Library struct {
 	root string
 	ctx  context.Context
 
-	mu   sync.Mutex
-	open map[string]*vault.Vault
+	mu      sync.Mutex
+	open    map[string]*vault.Vault
+	history map[string]*history.Repo
 }
 
 // New creates root if needed. Watchers of opened worlds stop with ctx.
@@ -56,7 +58,7 @@ func New(ctx context.Context, root string) (*Library, error) {
 	if err := os.MkdirAll(root, 0o755); err != nil {
 		return nil, err
 	}
-	return &Library{root: root, ctx: ctx, open: map[string]*vault.Vault{}}, nil
+	return &Library{root: root, ctx: ctx, open: map[string]*vault.Vault{}, history: map[string]*history.Repo{}}, nil
 }
 
 func (l *Library) Root() string { return l.root }
@@ -145,7 +147,34 @@ func (l *Library) Create(name string) (WorldInfo, error) {
 			return WorldInfo{}, err
 		}
 	}
+	// A world has a history from its first moment.
+	if repo, err := history.Open(dir, "Створено світ"); err != nil {
+		fmt.Fprintf(os.Stderr, "history %s: %v\n", id, err)
+	} else {
+		l.mu.Lock()
+		l.history[id] = repo
+		l.mu.Unlock()
+	}
 	return l.info(id)
+}
+
+// History returns the versions of world id, starting them on first use for
+// a world that has none yet (one made before, or copied in).
+func (l *Library) History(id string) (*history.Repo, error) {
+	if _, err := l.Open(id); err != nil {
+		return nil, err
+	}
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if repo, ok := l.history[id]; ok {
+		return repo, nil
+	}
+	repo, err := history.Open(filepath.Join(l.root, id), "Перша версія")
+	if err != nil {
+		return nil, err
+	}
+	l.history[id] = repo
+	return repo, nil
 }
 
 // Open returns the world in folder id, loading it on first use.

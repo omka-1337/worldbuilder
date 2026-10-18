@@ -15,6 +15,7 @@ import (
 	"strconv"
 	"strings"
 
+	"worldbuilder/internal/history"
 	"worldbuilder/internal/library"
 	"worldbuilder/internal/vault"
 )
@@ -48,6 +49,9 @@ func New(lib *library.Library, ui fs.FS) http.Handler {
 	mux.HandleFunc("POST "+w+"/calendar/preview", s.inWorld(s.previewCalendar))
 	mux.HandleFunc("GET "+w+"/types", s.inWorld(s.types))
 	mux.HandleFunc("PUT "+w+"/types", s.inWorld(s.saveTypes))
+	mux.HandleFunc("GET "+w+"/changes", s.inWorld(s.changes))
+	mux.HandleFunc("GET "+w+"/versions", s.inWorld(s.versions))
+	mux.HandleFunc("POST "+w+"/versions", s.inWorld(s.saveVersion))
 	mux.HandleFunc("GET /w/{world}/files/{path...}", s.inWorld(s.file))
 	mux.HandleFunc("POST "+w+"/images/{title...}", s.inWorld(s.uploadImage))
 
@@ -314,6 +318,79 @@ func (s *server) uploadImage(w http.ResponseWriter, r *http.Request, v *vault.Va
 		return
 	}
 	writeJSON(w, map[string]string{"name": name, "url": url})
+}
+
+// changes lists what differs from the world's last saved version, naming
+// articles by title.
+func (s *server) changes(w http.ResponseWriter, r *http.Request, v *vault.Vault) {
+	repo, err := s.lib.History(r.PathValue("world"))
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	changes, err := repo.Changes()
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	type change struct {
+		history.Change
+		Title string `json:"title,omitempty"`
+	}
+	out := make([]change, len(changes))
+	for i, c := range changes {
+		out[i].Change = c
+		out[i].Title, _ = v.TitleAt(c.Path)
+	}
+	writeJSON(w, out)
+}
+
+func (s *server) versions(w http.ResponseWriter, r *http.Request, v *vault.Vault) {
+	repo, err := s.lib.History(r.PathValue("world"))
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	limit, err := strconv.Atoi(r.URL.Query().Get("limit"))
+	if err != nil || limit <= 0 {
+		limit = 50
+	}
+	log, err := repo.Log(limit)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	writeJSON(w, log)
+}
+
+func (s *server) saveVersion(w http.ResponseWriter, r *http.Request, v *vault.Vault) {
+	var req struct {
+		Message string `json:"message"`
+	}
+	if err := json.NewDecoder(io.LimitReader(r.Body, 1<<16)).Decode(&req); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	repo, err := s.lib.History(r.PathValue("world"))
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	version, err := repo.Commit(req.Message)
+	if errors.Is(err, history.ErrNoChanges) {
+		http.Error(w, err.Error(), http.StatusConflict)
+		return
+	}
+	if errors.Is(err, history.ErrNoMessage) {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusCreated)
+	writeJSON(w, version)
 }
 
 // titleParam reads a title from the URL, where "_" stands for a space.

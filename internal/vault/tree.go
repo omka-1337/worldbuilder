@@ -111,6 +111,16 @@ func (v *Vault) location(p *Page, c *collate.Collator) ([]Crumb, []string) {
 	return crumbs, children
 }
 
+// TitleAt returns the title of the article in file rel, if there is one.
+func (v *Vault) TitleAt(rel string) (string, bool) {
+	v.mu.RLock()
+	defer v.mu.RUnlock()
+	if p, ok := v.idx.pages[rel]; ok {
+		return p.Title, true
+	}
+	return "", false
+}
+
 // pageAt finds the article whose folder is dir, whatever its extension case.
 func (v *Vault) pageAt(dir string) (*Page, bool) {
 	for _, p := range v.idx.pages {

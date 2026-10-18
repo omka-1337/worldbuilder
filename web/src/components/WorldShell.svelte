@@ -8,6 +8,7 @@
   import Timeline from '../views/Timeline.svelte'
   import Types from '../views/Types.svelte'
   import Calendar from '../views/Calendar.svelte'
+  import Versions from '../views/Versions.svelte'
   import { prefs } from '../lib/prefs.svelte'
   import Article from '../views/Article.svelte'
   import Editor from '../views/Editor.svelte'
@@ -32,7 +33,7 @@
 
   type Route =
     | { name: 'article' | 'edit' | 'category'; arg: string }
-    | { name: 'pages' | 'categories' | 'wanted' | 'search' | 'new' | 'timeline' | 'types' | 'calendar' | 'unknown' }
+    | { name: 'pages' | 'categories' | 'wanted' | 'search' | 'new' | 'timeline' | 'types' | 'calendar' | 'versions' | 'unknown' }
 
   const route: Route = $derived.by(() => {
     const [first = '', ...more] = rest
@@ -54,6 +55,7 @@
       case 'timeline':
       case 'types':
       case 'calendar':
+      case 'versions':
         return { name: first }
     }
     return { name: 'unknown' }
@@ -104,6 +106,8 @@
         <Types />
       {:else if route.name === 'calendar'}
         <Calendar />
+      {:else if route.name === 'versions'}
+        <Versions />
       {:else}
         <h1 class="page-title">Сторінку не знайдено</h1>
       {/if}

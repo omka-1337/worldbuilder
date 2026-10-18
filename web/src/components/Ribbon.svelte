@@ -3,6 +3,9 @@
   import { worldHref } from '../lib/api'
   import { router } from '../lib/router.svelte'
   import { prefs, type Side } from '../lib/prefs.svelte'
+  import { store } from '../lib/store.svelte'
+  import { changes, refreshChanges } from '../lib/versions.svelte'
+  import { plural } from '../lib/format'
 
   const tools: { sub: string; icon: IconName; label: string }[] = [
     { sub: '/new', icon: 'plus', label: 'Нова стаття' },
@@ -16,6 +19,29 @@
 
   const isActive = (sub: string) =>
     router.path.startsWith(new URL(worldHref(undefined, sub), location.href).pathname)
+
+  // The history status at the bottom: refreshed after the app changes
+  // something, when the window comes back into view, and every little while
+  // for edits made in other programs.
+  $effect(() => {
+    void store.version
+    refreshChanges()
+  })
+  $effect(() => {
+    const onVisible = () => document.visibilityState === 'visible' && refreshChanges()
+    const timer = setInterval(onVisible, 15_000)
+    addEventListener('focus', onVisible)
+    document.addEventListener('visibilitychange', onVisible)
+    return () => {
+      clearInterval(timer)
+      removeEventListener('focus', onVisible)
+      document.removeEventListener('visibilitychange', onVisible)
+    }
+  })
+  const unsaved = $derived(changes.list.length)
+  const historyLabel = $derived(
+    unsaved ? `Незбережені зміни: ${plural(unsaved, ['файл', 'файли', 'файлів'])}` : 'Версії: усе збережено',
+  )
 
   // Dragging the grip picks the screen half the pointer is released over.
   let dragging = $state(false)
@@ -58,6 +84,18 @@
       <Icon name={tool.icon} />
     </a>
   {/each}
+  {#if changes.ready}
+    <a
+      href={worldHref(undefined, '/versions')}
+      class="history"
+      class:active={isActive('/versions')}
+      title={historyLabel}
+      aria-label={historyLabel}
+    >
+      <Icon name="history" />
+      {#if unsaved}<span class="badge">{unsaved > 99 ? '99+' : unsaved}</span>{/if}
+    </a>
+  {/if}
 </nav>
 
 {#if dragging}
@@ -95,6 +133,25 @@
   a.active {
     background: var(--accent-soft);
     color: var(--accent);
+  }
+  .history {
+    position: relative;
+    margin-top: auto; /* status at the bottom of the panel */
+  }
+  .badge {
+    position: absolute;
+    top: 0;
+    right: -0.15rem;
+    min-width: 1.05rem;
+    height: 1.05rem;
+    padding: 0 0.25rem;
+    border-radius: 999px;
+    background: var(--accent);
+    color: var(--bg);
+    font-size: 0.65rem;
+    font-weight: 700;
+    line-height: 1.05rem;
+    text-align: center;
   }
   .grip {
     border: none;
@@ -151,6 +208,9 @@
     }
     .grip {
       display: none;
+    }
+    .history {
+      margin-top: 0;
     }
   }
 </style>
