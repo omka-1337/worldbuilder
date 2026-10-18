@@ -294,9 +294,10 @@ func TestSaveTypes(t *testing.T) {
 	// Rename a type and a field, add a field and a new type; keys of
 	// existing entries must survive, new ones are generated from labels.
 	character.Label = "Герой"
+	character.Color = "#8E5BD4"
 	character.Fields[0].Label = "Дата народження"
 	character.Fields = append(character.Fields, FieldDef{Label: "Рід занять"})
-	types = append(types, TypeInfo{Label: "Магічний артефакт", Fields: []FieldDef{
+	types = append(types, TypeInfo{Label: "Магічний артефакт", Color: "red", Fields: []FieldDef{
 		{Label: "Створено", Type: "date"},
 		{Label: "Створено"}, // same label: key must still be unique
 	}})
@@ -309,11 +310,11 @@ func TestSaveTypes(t *testing.T) {
 	for _, ti := range saved {
 		byKey[ti.Key] = ti
 	}
-	if c := byKey["character"]; c.Label != "Герой" || c.Fields[0].Key != "born" || c.Fields[3].Key != "рід-занять" {
+	if c := byKey["character"]; c.Label != "Герой" || c.Color != "#8e5bd4" || c.Fields[0].Key != "born" || c.Fields[3].Key != "рід-занять" {
 		t.Errorf("character after save = %+v", c)
 	}
 	a, ok := byKey["магічний-артефакт"]
-	if !ok || a.Fields[0].Key != "створено" || a.Fields[1].Key != "створено-2" || a.Fields[0].Type != "date" {
+	if !ok || a.Color != "" || a.Fields[0].Key != "створено" || a.Fields[1].Key != "створено-2" || a.Fields[0].Type != "date" {
 		t.Errorf("new type = %+v (types %v)", a, saved)
 	}
 

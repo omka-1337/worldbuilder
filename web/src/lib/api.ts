@@ -15,6 +15,7 @@ export interface FieldDef {
 
 export interface TypeDef {
   label: string
+  color?: string // "#rrggbb"
   event?: boolean
   fields: FieldDef[]
 }

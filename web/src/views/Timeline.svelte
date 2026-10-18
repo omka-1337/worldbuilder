@@ -5,6 +5,7 @@
   import { navigate, router } from '../lib/router.svelte'
   import { store } from '../lib/store.svelte'
   import { plural } from '../lib/format'
+  import { typeColor } from '../lib/colors'
 
   let years = $state<TimelineYear[] | null>(null)
   let width = $state(0) // of the stage, which narrows when the panel opens
@@ -33,7 +34,8 @@
   function fullRange(): [number, number] {
     if (!years?.length) return [0, 1]
     const first = years[0].year
-    const last = years[years.length - 1].year
+    // Ranges can end after the last year that starts anything.
+    const last = Math.max(...years.flatMap((y) => y.entries.map((e) => e.endYear ?? y.year)))
     const margin = Math.max((last - first) * 0.04, 5)
     return [first - margin, last + margin]
   }
@@ -62,13 +64,19 @@
     return Math.max(half - cx, 0) - Math.max(cx + half - width, 0)
   }
 
-  // Labels compete for space: the busiest years claim a spot first, above
-  // the axis, then below; a label that fits nowhere shows only on hover.
+  // Labels compete for space: the selected year first, then the busiest
+  // years, above the axis, then below; a label that fits nowhere shows only
+  // on hover.
   const placement = $derived.by(() => {
     const rows: [number, number][][] = [[], []]
     const out = new Map<number, 0 | 1>()
     if (!years) return out
-    const byWeight = [...years].sort((a, b) => b.entries.length - a.entries.length || b.main.text - a.main.text)
+    const byWeight = [...years].sort(
+      (a, b) =>
+        Number(b === selected) - Number(a === selected) ||
+        b.entries.length - a.entries.length ||
+        b.main.text - a.main.text,
+    )
     for (const y of byWeight) {
       const dot = x(y.year)
       if (dot < 0 || dot > width) continue // off-screen dots get no label
@@ -83,6 +91,36 @@
       }
     }
     return out
+  })
+
+  // Ranges (340–347) are drawn as bars below the axis. Bars that overlap in
+  // time go to separate lanes; a lane is reused once its last bar has ended.
+  const SPANS_TOP = 110 // px below the axis, clear of the lower labels
+  const LANE = 26 // px per lane
+
+  const spans = $derived.by(() => {
+    if (!years) return []
+    const all = years.flatMap((y) => y.entries.filter((e) => e.endYear))
+    all.sort((a, b) => a.year - b.year || b.endYear! - a.endYear!)
+    const laneEnds: number[] = []
+    return all.map((e) => {
+      let lane = laneEnds.findIndex((end) => end < e.year)
+      if (lane < 0) lane = laneEnds.push(0) - 1
+      laneEnds[lane] = e.endYear!
+      return { ...e, lane }
+    })
+  })
+
+  // Ranges still going on in the selected year, started earlier.
+  const ongoing = $derived(
+    selected ? spans.filter((s) => s.year < selected.year && s.endYear! >= selected.year) : [],
+  )
+
+  // Which color means which type, for the types that are on the timeline.
+  const legend = $derived.by(() => {
+    const seen = new Map<string, string>()
+    for (const y of years ?? []) for (const e of y.entries) if (e.type && !seen.has(e.type)) seen.set(e.type, e.typeLabel ?? e.type)
+    return [...seen].map(([type, label]) => ({ label, color: typeColor(type) }))
   })
 
   // Axis ticks at a round step: 1, 2 or 5 × 10ⁿ years, about 110px apart.
@@ -171,7 +209,7 @@
   let drag = $state<{ x: number; from: number; to: number; moved: boolean } | null>(null)
 
   function onPointerDown(e: PointerEvent) {
-    if (e.button !== 0 || (e.target as Element).closest('.point, .bar')) return
+    if (e.button !== 0 || (e.target as Element).closest('.point, .bar, .span, .legend')) return
     cancelAnimationFrame(frame)
     drag = { x: e.clientX, from, to, moved: false }
     stage!.setPointerCapture(e.pointerId)
@@ -216,13 +254,18 @@
       <span class="muted hint">Колесо — масштаб, перетягування — зсув, ← → — сусідні роки</span>
       <button onclick={resetView}>Весь таймлайн</button>
     </div>
+    {#if legend.length}
+      <ul class="legend" aria-label="Кольори типів">
+        {#each legend as l (l.label)}<li><span class="swatch" style:background={l.color}></span>{l.label}</li>{/each}
+      </ul>
+    {/if}
 
     {#if years && !years.length}
       <div class="empty">
         <p>На таймлайні поки нічого немає.</p>
         <p class="muted">
-          Позначте поля-дати в <code>world.yaml</code> через <code>type: date</code> (наприклад, <code>date</code>
-          у типу «Подія») і заповніть їх у статтях: <code>date: 343</code> або <code>date: 340–347</code>.
+          Відкрийте <a href={worldHref(undefined, '/types')}>«Типи статей»</a>, додайте типу поле з видом «Дата» і
+          заповніть його в статтях: <code>343</code> для події або <code>340–347</code> для відрізка.
         </p>
       </div>
     {:else if years}
@@ -237,9 +280,10 @@
         <button
           class="point"
           class:selected={selected === y}
-          class:labelled={row !== undefined || selected === y}
+          class:labelled={row !== undefined}
           style:left="{x(y.year)}px"
           style:--r="{r}px"
+          style:--c={typeColor(y.main.type)}
           onclick={() => select(y.year)}
           aria-label="{y.year}{era}: {name(y.main)}, {plural(y.entries.length, ['подія', 'події', 'подій'])}"
         >
@@ -250,13 +294,33 @@
           </span>
         </button>
       {/each}
+
+      {#each spans as s (s.title + s.field)}
+        {@const x1 = x(s.year)}
+        {@const x2 = x(s.endYear!)}
+        {#if x2 > -20 && x1 < width + 20}
+          <button
+            class="span"
+            class:active={selected && s.year <= selected.year && s.endYear! >= selected.year}
+            style:left="{x1}px"
+            style:width="{Math.max(x2 - x1, 6)}px"
+            style:top="calc(var(--axis) + {SPANS_TOP + s.lane * LANE}px)"
+            style:--c={typeColor(s.type)}
+            style:--inset="{Math.max(0, -x1)}px"
+            onclick={() => select(s.year)}
+            title="{s.title} · {range(s)}"
+          >
+            <span>{s.title}</span>
+          </button>
+        {/if}
+      {/each}
     {/if}
   </div>
 
   <aside class="panel" aria-live="polite">
     {#if selected}
       <header>
-        <span class="big-dot" style:--r="{radius(selected)}px"></span>
+        <span class="big-dot" style:--r="{radius(selected)}px" style:--c={typeColor(selected.main.type)}></span>
         <div class="heading">
           <div class="year">{selected.year}{era}</div>
           <a class="main" href={pageHref(selected.main.title)}>{name(selected.main)}</a>
@@ -276,7 +340,7 @@
 
       <ul>
         {#each selected.entries as e (e.title + e.field)}
-          <li class:event={e.event}>
+          <li class:event={e.event} style:--c={typeColor(e.type)}>
             <a href={pageHref(e.title)}>{e.title}</a>
             <span class="meta muted">
               {e.typeLabel}{e.event ? '' : ' · ' + e.field.toLowerCase()} · {range(e)}
@@ -284,6 +348,18 @@
           </li>
         {/each}
       </ul>
+
+      {#if ongoing.length}
+        <h3 class="section">Триває в цей час</h3>
+        <ul>
+          {#each ongoing as e (e.title + e.field)}
+            <li style:--c={typeColor(e.type)}>
+              <a href={pageHref(e.title)}>{e.title}</a>
+              <span class="meta muted">{e.typeLabel} · {range(e)}</span>
+            </li>
+          {/each}
+        </ul>
+      {/if}
     {/if}
   </aside>
 </div>
@@ -301,6 +377,7 @@
   }
 
   .stage {
+    --axis: 40%;
     position: relative;
     overflow: hidden;
     cursor: grab;
@@ -342,19 +419,55 @@
     font-size: 0.88em;
   }
 
+  .legend {
+    position: absolute;
+    top: 4.1rem;
+    left: 1.5rem;
+    right: 1.5rem;
+    z-index: 3;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.3rem 1rem;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    font-size: 0.82rem;
+    color: var(--text-muted);
+    cursor: default;
+  }
+  .legend li {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+  }
+  .legend .swatch {
+    width: 0.65rem;
+    height: 0.65rem;
+    border-radius: 50%;
+  }
+
   .axis {
     position: absolute;
-    top: 55%;
+    top: var(--axis);
     left: 0;
     right: 0;
     border-top: 2px solid var(--border);
   }
   .tick {
     position: absolute;
-    top: 55%;
+    top: var(--axis);
     height: 10px;
     border-left: 1px solid var(--border);
     pointer-events: none;
+  }
+  /* A faint guide down through the range bars, to read their years. */
+  .tick::after {
+    content: '';
+    position: absolute;
+    top: 34px;
+    left: -1px;
+    height: 100vh;
+    border-left: 1px dashed color-mix(in srgb, var(--border) 60%, transparent);
   }
   .tick span {
     position: absolute;
@@ -368,7 +481,7 @@
   /* A zero-size anchor on the axis; the dot and label hang off it. */
   .point {
     position: absolute;
-    top: 55%;
+    top: var(--axis);
     width: 0;
     height: 0;
     padding: 0;
@@ -389,9 +502,9 @@
     width: calc(var(--r) * 2);
     height: calc(var(--r) * 2);
     border-radius: 50%;
-    background: var(--accent);
+    background: var(--c);
     border: 3px solid var(--bg);
-    box-shadow: 0 0 0 1px var(--accent);
+    box-shadow: 0 0 0 1px var(--c);
     transition: transform 0.15s ease, box-shadow 0.15s ease;
   }
   .point:hover .dot,
@@ -400,7 +513,35 @@
   }
   .point.selected .dot {
     transform: scale(1.6);
-    box-shadow: 0 0 0 1px var(--accent), 0 0 0 7px var(--accent-soft);
+    box-shadow: 0 0 0 1px var(--c), 0 0 0 7px color-mix(in srgb, var(--c) 22%, transparent);
+  }
+
+  .span {
+    position: absolute;
+    height: 20px;
+    padding: 0;
+    border: none;
+    border-left: 3px solid var(--c);
+    border-radius: 4px;
+    background: color-mix(in srgb, var(--c) 22%, var(--bg));
+    color: var(--text);
+    font-size: 0.78rem;
+    line-height: 20px;
+    text-align: left;
+    overflow: hidden;
+    transition: background 0.15s;
+  }
+  .span span {
+    display: block;
+    padding: 0 0.4rem 0 calc(0.4rem + var(--inset));
+    white-space: nowrap;
+  }
+  .span:hover,
+  .span.active {
+    background: color-mix(in srgb, var(--c) 40%, var(--bg));
+  }
+  .span.active {
+    font-weight: 600;
   }
 
   .label {
@@ -464,8 +605,8 @@
     width: calc(var(--r) * 2 + 8px);
     height: calc(var(--r) * 2 + 8px);
     border-radius: 50%;
-    background: var(--accent);
-    box-shadow: 0 0 0 6px var(--accent-soft);
+    background: var(--c);
+    box-shadow: 0 0 0 6px color-mix(in srgb, var(--c) 22%, transparent);
   }
   .heading {
     flex: 1;
@@ -500,24 +641,30 @@
     font-size: 0.85rem;
     font-variant-numeric: tabular-nums;
   }
-  ul {
+  .panel ul {
     list-style: none;
     margin: 0;
-    padding: 0 0.75rem 1.5rem;
+    padding: 0 0.75rem 0.5rem;
   }
-  li {
+  .panel li {
     display: flex;
     flex-direction: column;
-    padding: 0.55rem 0.5rem;
-    border-radius: 6px;
+    padding: 0.55rem 0.5rem 0.55rem 0.8rem;
+    border-left: 3px solid var(--c);
+    margin: 0.3rem 0;
   }
-  li + li {
-    border-top: 1px solid var(--border);
+  .section {
+    margin: 0.8rem 1.25rem 0.2rem;
+    font-size: 0.8rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--text-muted);
   }
-  li a {
+
+  .panel li a {
     font-weight: 600;
   }
-  li:not(.event) a {
+  .panel li:not(.event) a {
     font-weight: 500;
   }
   .meta {

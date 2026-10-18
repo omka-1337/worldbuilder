@@ -23,6 +23,7 @@ type World struct {
 // TypeDef describes an article type and the infobox fields it offers.
 type TypeDef struct {
 	Label  string     `yaml:"label" json:"label"`
+	Color  string     `yaml:"color" json:"color,omitempty"` // "#rrggbb", used on the timeline
 	Event  bool       `yaml:"event" json:"event,omitempty"` // articles of this type are timeline events
 	Fields []FieldDef `yaml:"fields" json:"fields"`
 }

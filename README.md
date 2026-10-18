@@ -57,9 +57,10 @@ infobox:
 
 `world.yaml` holds the world's name, main page and article types. Types are
 edited on the app's "Article types" page, so users never touch the YAML.
-Each type lists its infobox fields; a field of kind *date* (e.g.
-`date: 340–347`) puts the article on the timeline, and types marked as
-events name the years they fall in. Type and field keys are generated once
+Each type has a color and lists its infobox fields; a field of kind
+*date* puts the article on the timeline — a single year (`343`) as a dot, a
+range (`340–347`) as a bar below the axis — drawn in the type's color.
+Types marked as events name the years they fall in. Type and field keys are generated once
 from their names and never change, so renaming keeps articles working.
 
 ## Code layout

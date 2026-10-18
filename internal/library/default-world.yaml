@@ -10,6 +10,7 @@ language: uk
 types:
   character:
     label: Персонаж
+    color: "#8e5bd4"
     fields:
       - { key: born, label: Народження, type: date }
       - { key: died, label: Смерть, type: date }
@@ -18,6 +19,7 @@ types:
       - { key: occupation, label: Рід занять }
   location:
     label: Локація
+    color: "#3f9b5c"
     fields:
       - { key: kind, label: Тип }
       - { key: region, label: Регіон }
@@ -26,6 +28,7 @@ types:
       - { key: founded, label: Засновано, type: date }
   faction:
     label: Фракція
+    color: "#c9a227"
     fields:
       - { key: founded, label: Засновано, type: date }
       - { key: founder, label: Засновник }
@@ -34,6 +37,7 @@ types:
       - { key: ideology, label: Ідеологія }
   event:
     label: Подія
+    color: "#d9534f"
     event: true
     fields:
       - { key: date, label: Дата, type: date }

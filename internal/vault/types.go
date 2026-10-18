@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 
@@ -15,6 +16,7 @@ import (
 type TypeInfo struct {
 	Key    string     `json:"key"` // empty for a new type; generated on save
 	Label  string     `json:"label"`
+	Color  string     `json:"color"`
 	Event  bool       `json:"event"`
 	Fields []FieldDef `json:"fields"`
 	Count  int        `json:"count"` // articles of this type; ignored on save
@@ -39,6 +41,7 @@ func (v *Vault) Types() []TypeInfo {
 		out = append(out, TypeInfo{
 			Key:    key,
 			Label:  def.Label,
+			Color:  def.Color,
 			Event:  def.Event,
 			Fields: nonNil(def.Fields),
 			Count:  counts[key],
@@ -98,6 +101,7 @@ func (v *Vault) SaveTypes(in []TypeInfo) ([]TypeInfo, error) {
 // typeOut is how a type is written to world.yaml.
 type typeOut struct {
 	Label  string     `yaml:"label"`
+	Color  string     `yaml:"color,omitempty"`
 	Event  bool       `yaml:"event,omitempty"`
 	Fields []fieldOut `yaml:"fields"`
 }
@@ -134,7 +138,11 @@ func normalizeTypes(in []TypeInfo) (map[string]typeOut, []string, error) {
 			taken[key] = true
 		}
 
-		out := typeOut{Label: label, Event: t.Event, Fields: []fieldOut{}}
+		color := strings.ToLower(strings.TrimSpace(t.Color))
+		if !colorRe.MatchString(color) {
+			color = "" // the editor only offers valid colors; anything else means none
+		}
+		out := typeOut{Label: label, Color: color, Event: t.Event, Fields: []fieldOut{}}
 		fieldKeys := map[string]bool{"image": true} // reserved for the infobox picture
 		for _, f := range t.Fields {
 			if f.Key != "" {
@@ -165,6 +173,8 @@ func normalizeTypes(in []TypeInfo) (map[string]typeOut, []string, error) {
 	}
 	return types, order, nil
 }
+
+var colorRe = regexp.MustCompile(`^#[0-9a-f]{6}$`)
 
 // validKey accepts what slug produces: letters, digits and dashes.
 func validKey(k string) bool {

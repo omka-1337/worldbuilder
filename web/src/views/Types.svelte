@@ -4,6 +4,7 @@
   import { api, type TypeInfo } from '../lib/api'
   import { store, refresh } from '../lib/store.svelte'
   import { plural } from '../lib/format'
+  import { palette } from '../lib/colors'
 
   // Edits are made on a local copy and written to the world in one save.
   let types = $state<TypeInfo[]>([])
@@ -41,7 +42,10 @@
   })
 
   async function addType() {
-    types.push({ key: '', label: '', event: false, fields: [{ key: '', label: '', type: '' }], count: 0 })
+    // New types take the first palette color nobody uses yet.
+    const used = new Set(types.map((t) => t.color))
+    const color = palette.find((p) => !used.has(p.color))?.color ?? ''
+    types.push({ key: '', label: '', color, event: false, fields: [{ key: '', label: '', type: '' }], count: 0 })
     selected = types.length - 1
     await tick()
     nameInput?.focus()
@@ -118,7 +122,10 @@
   <nav class="list" aria-label="Типи">
     {#each types as t, i (i)}
       <button class="item" class:active={i === selected} onclick={() => (selected = i)}>
-        <span class="name" class:muted={!t.label.trim()}>{t.label.trim() || 'Без назви'}</span>
+        <span class="name" class:muted={!t.label.trim()}>
+          <span class="swatch-dot" style:background={t.color || 'var(--accent)'}></span>
+          {t.label.trim() || 'Без назви'}
+        </span>
         <span class="muted small">
           {t.count ? plural(t.count, ['стаття', 'статті', 'статей']) : 'не використовується'}
           {#if t.event}· подія{/if}
@@ -134,6 +141,28 @@
         <span>Назва типу</span>
         <input bind:this={nameInput} bind:value={current.label} placeholder="Наприклад, Персонаж" />
       </label>
+
+      <div class="color">
+        <span class="color-label">Колір</span>
+        <div class="swatches" role="radiogroup" aria-label="Колір типу">
+          {#each palette as p (p.color)}
+            <button
+              class="swatch"
+              class:on={current.color === p.color}
+              style:background={p.color}
+              onclick={() => (current.color = p.color)}
+              role="radio"
+              aria-checked={current.color === p.color}
+              aria-label={p.name}
+              title={p.name}
+            ></button>
+          {/each}
+          <label class="swatch custom" class:on={!!current.color && !palette.some((p) => p.color === current!.color)} title="Свій колір">
+            <input type="color" bind:value={current.color} aria-label="Свій колір" />
+          </label>
+        </div>
+        <span class="muted small">Цим кольором тип показується на таймлайні.</span>
+      </div>
 
       <label class="check">
         <input type="checkbox" bind:checked={current.event} />
@@ -240,7 +269,57 @@
     color: var(--accent);
   }
   .name {
+    display: flex;
+    align-items: center;
+    gap: 0.45rem;
     font-weight: 600;
+  }
+  .swatch-dot {
+    width: 0.7rem;
+    height: 0.7rem;
+    border-radius: 50%;
+    flex: none;
+  }
+  .color {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+    margin-top: 1rem;
+  }
+  .color-label {
+    font-weight: 600;
+    font-size: 0.9rem;
+  }
+  .swatches {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+  }
+  .swatch {
+    width: 1.7rem;
+    height: 1.7rem;
+    padding: 0;
+    border-radius: 50%;
+    border: 2px solid var(--bg-raised);
+    box-shadow: 0 0 0 1px var(--border);
+    cursor: pointer;
+  }
+  .swatch:hover {
+    transform: scale(1.1);
+  }
+  .swatch.on {
+    box-shadow: 0 0 0 2px var(--text);
+  }
+  .swatch.custom {
+    position: relative;
+    overflow: hidden;
+    background: conic-gradient(#d9534f, #c9a227, #3f9b5c, #3b82c4, #8e5bd4, #d9534f);
+  }
+  .swatch.custom input {
+    position: absolute;
+    inset: 0;
+    opacity: 0;
+    cursor: pointer;
   }
   .small {
     font-size: 0.8rem;
