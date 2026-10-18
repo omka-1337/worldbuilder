@@ -143,7 +143,7 @@ func normalizeTypes(in []TypeInfo) (map[string]typeOut, []string, error) {
 			color = "" // the editor only offers valid colors; anything else means none
 		}
 		out := typeOut{Label: label, Color: color, Event: t.Event, Fields: []fieldOut{}}
-		fieldKeys := map[string]bool{"image": true} // reserved for the infobox picture
+		fieldKeys := map[string]bool{ImageKey: true, CaptionKey: true} // every type has these
 		for _, f := range t.Fields {
 			if f.Key != "" {
 				if !validKey(f.Key) || fieldKeys[f.Key] {

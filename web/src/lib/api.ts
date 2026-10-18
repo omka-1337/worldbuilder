@@ -70,6 +70,7 @@ export interface PageView {
   categories: string[]
   infobox: { label: string; html: string }[]
   image?: string
+  caption?: string
   html: string
   headings: Heading[]
   backlinks: string[]
@@ -86,6 +87,7 @@ export interface Source {
   categories: string[]
   infobox: { key: string; value: string }[]
   body: string
+  imageUrl?: string // preview of the infobox image, when loading
 }
 
 export interface Hit {
@@ -170,6 +172,11 @@ export const api = {
   wanted: () => get<Wanted[]>(`${w()}/wanted`),
   timeline: () => get<TimelineYear[]>(`${w()}/timeline`),
   tree: () => get<TreeNode[]>(`${w()}/tree`),
+  // Stores a picture for the article's infobox; returns the name to embed.
+  async uploadImage(title: string, file: Blob): Promise<{ name: string; url: string }> {
+    const r = await check(await fetch(`${w()}/images/${enc(title)}`, { method: 'POST', body: file }))
+    return r.json()
+  },
   // Nests an article inside another one, or at the top level with parent "".
   move: (title: string, parent: string) => send<TreeNode[]>('POST', `${w()}/move`, { title, parent }),
   types: () => get<TypeInfo[]>(`${w()}/types`),

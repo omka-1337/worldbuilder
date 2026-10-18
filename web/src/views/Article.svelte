@@ -97,7 +97,12 @@
       {#if view.infobox.length || view.image}
         <aside class="infobox">
           <div class="ib-title">{view.title}</div>
-          {#if view.image}<div class="ib-image">{@html view.image}</div>{/if}
+          {#if view.image}
+            <figure class="ib-image">
+              {@html view.image}
+              {#if view.caption}<figcaption>{@html view.caption}</figcaption>{/if}
+            </figure>
+          {/if}
           {#if view.typeLabel}<div class="ib-type">{view.typeLabel}</div>{/if}
           <dl>
             {#each view.infobox as row (row.label)}
@@ -243,9 +248,22 @@
     padding: 0.6rem 0.8rem;
     background: var(--accent-soft);
   }
+  .ib-image {
+    margin: 0;
+  }
   .ib-image :global(img) {
     display: block;
     width: 100%;
+    max-height: 22rem; /* a tall portrait must not stretch the infobox */
+    object-fit: contain;
+    background: var(--bg-sidebar);
+  }
+  figcaption {
+    padding: 0.4rem 0.8rem;
+    font-size: 0.82rem;
+    color: var(--text-muted);
+    text-align: center;
+    border-bottom: 1px solid var(--border);
   }
   .ib-type {
     text-align: center;

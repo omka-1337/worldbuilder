@@ -504,3 +504,51 @@ func TestNesting(t *testing.T) {
 		t.Error("move to top level or pruning failed")
 	}
 }
+
+// A minimal valid PNG (1×1 pixel).
+var tinyPNG = []byte("\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x06\x00\x00\x00\x1f\x15\xc4\x89\x00\x00\x00\rIDATx\x9cc\xf8\x0f\x00\x00\x01\x01\x00\x05\x18\xd8N\x00\x00\x00\x00IEND\xaeB`\x82")
+
+func TestInfoboxImage(t *testing.T) {
+	v := openFixture(t)
+
+	name, url, err := v.SaveImage("Аедрін Сірий", tinyPNG)
+	if err != nil || name != "Аедрін Сірий.png" || !strings.HasSuffix(url, "/files/%D0%90%D0%B5%D0%B4%D1%80%D1%96%D0%BD%20%D0%A1%D1%96%D1%80%D0%B8%D0%B9/%D0%90%D0%B5%D0%B4%D1%80%D1%96%D0%BD%20%D0%A1%D1%96%D1%80%D0%B8%D0%B9.png") {
+		t.Fatalf("SaveImage = %q, %q, %v", name, url, err)
+	}
+	// It lives in the article's folder; a second upload gets its own name.
+	if !fileExists(filepath.Join(v.Root(), "Аедрін Сірий", name)) {
+		t.Error("image not stored in the article's folder")
+	}
+	if second, _, _ := v.SaveImage("Аедрін Сірий", tinyPNG); second != "Аедрін Сірий-2.png" {
+		t.Errorf("second upload = %q", second)
+	}
+	if _, _, err := v.SaveImage("Аедрін Сірий", []byte("<svg onload=alert(1)>")); !errors.As(err, new(*InvalidError)) {
+		t.Errorf("svg accepted: %v", err)
+	}
+
+	src := v.Source("Аедрін Сірий")
+	src.Infobox = append(src.Infobox, Field{ImageKey, "![[" + name + "]]"}, Field{CaptionKey, "Портрет із [[Вальмор]]а"})
+	if _, err := v.SaveSource("Аедрін Сірий", src); err != nil {
+		t.Fatal(err)
+	}
+	view, _ := v.Get("Аедрін Сірий")
+	if !strings.Contains(view.Image, "<img src=") || !strings.Contains(view.Caption, `class="wikilink"`) {
+		t.Errorf("image %q caption %q", view.Image, view.Caption)
+	}
+	for _, r := range view.Infobox {
+		if r.Label == ImageKey || r.Label == CaptionKey {
+			t.Errorf("%s shown as a plain row", r.Label)
+		}
+	}
+	if got := v.Source("Аедрін Сірий").ImageURL; got != url {
+		t.Errorf("source image url = %q", got)
+	}
+
+	// The image moves along with its article.
+	if err := v.Move("Аедрін Сірий", "Головна"); err != nil {
+		t.Fatal(err)
+	}
+	if view, _ := v.Get("Аедрін Сірий"); !strings.Contains(view.Image, "/files/%D0%93%D0%BE%D0%BB%D0%BE%D0%B2%D0%BD%D0%B0/") {
+		t.Errorf("image not found after move: %s", view.Image)
+	}
+}

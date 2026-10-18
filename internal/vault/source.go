@@ -22,6 +22,7 @@ type Source struct {
 	Categories []string `json:"categories"`
 	Infobox    []Field  `json:"infobox"` // in file order
 	Body       string   `json:"body"`
+	ImageURL   string   `json:"imageUrl,omitempty"` // preview of the infobox image, when loading
 }
 
 // Source returns the editable parts of a page; for a missing page it
@@ -34,7 +35,7 @@ func (v *Vault) Source(title string) Source {
 	if !ok {
 		return Source{Title: title, Aliases: []string{}, Categories: []string{}, Infobox: []Field{}}
 	}
-	return Source{
+	src := Source{
 		Exists:     true,
 		Title:      p.Title,
 		Type:       p.Type,
@@ -43,6 +44,12 @@ func (v *Vault) Source(title string) Source {
 		Infobox:    nonNil(p.Infobox),
 		Body:       string(p.Body),
 	}
+	for _, f := range p.Infobox {
+		if f.Key == ImageKey {
+			src.ImageURL = v.imageURL(f.Value)
+		}
+	}
+	return src
 }
 
 // SaveSource writes the editor's parts back into the page's file, keeping

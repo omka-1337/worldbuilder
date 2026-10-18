@@ -2,6 +2,7 @@
   import { onMount, tick } from 'svelte'
   import Icon from '../components/Icon.svelte'
   import ChipsInput from '../components/ChipsInput.svelte'
+  import ImagePicker from '../components/ImagePicker.svelte'
   import { api, key, pageHref, worldHref, HttpError, type FieldDef } from '../lib/api'
   import { navigate } from '../lib/router.svelte'
   import { store, refresh } from '../lib/store.svelte'
@@ -25,6 +26,9 @@
   let aliases = $state<string[]>([])
   let categories = $state<string[]>([])
   let body = $state('')
+  let image = $state('') // ![[file.png]]; every type has it
+  let imageUrl = $state('')
+  let caption = $state('')
 
   let loadedType = ''
   let originalName = $state('')
@@ -51,10 +55,15 @@
       aliases = src?.aliases ?? []
       categories = src?.categories ?? []
       body = src?.body ?? ''
+      imageUrl = src?.imageUrl ?? ''
       const known = new Set((store.world?.types[type]?.fields ?? []).map((f) => f.key))
       for (const f of src?.infobox ?? []) {
-        values[f.key] = f.value
-        if (!known.has(f.key)) extras.push(f.key)
+        if (f.key === 'image') image = f.value
+        else if (f.key === 'caption') caption = f.value
+        else {
+          values[f.key] = f.value
+          if (!known.has(f.key)) extras.push(f.key)
+        }
       }
       saved = JSON.stringify(build())
     } catch (e) {
@@ -71,7 +80,11 @@
   })
 
   function build() {
-    const infobox = [...schema.map((f) => f.key), ...extras].map((key) => ({ key, value: values[key] ?? '' }))
+    const infobox = [
+      { key: 'image', value: image },
+      { key: 'caption', value: image ? caption : '' },
+      ...[...schema.map((f) => f.key), ...extras].map((key) => ({ key, value: values[key] ?? '' })),
+    ]
     return { title: name.trim(), type, aliases, categories, infobox, body }
   }
 
@@ -142,6 +155,8 @@
 </script>
 
 <svelte:window
+  ondragover={(e) => e.dataTransfer?.types.includes('Files') && e.preventDefault()}
+  ondrop={(e) => e.dataTransfer?.types.includes('Files') && e.preventDefault()}
   onkeydown={(e) => {
     if ((e.ctrlKey || e.metaKey) && e.key === 's') {
       e.preventDefault()
@@ -213,6 +228,21 @@
         {/if}
       </div>
 
+      <div class="group">
+        <span class="label">Зображення</span>
+        <ImagePicker bind:value={image} bind:url={imageUrl} title={name || title} />
+        {#if image}
+          <input
+            class="caption"
+            bind:value={caption}
+            use:linkComplete={pages}
+            autocomplete="off"
+            placeholder="Підпис під зображенням"
+            aria-label="Підпис під зображенням"
+          />
+        {/if}
+      </div>
+
       {#if schema.length || extras.length}
         <div class="group">
           <span class="label">Інфобокс</span>
@@ -233,7 +263,7 @@
           {/each}
           {#each extras as key, i (key)}
             <div class="field">
-              <label for="field-{key}">{key === 'image' ? 'Зображення' : key}</label>
+              <label for="field-{key}">{key}</label>
               <div class="with-remove">
                 <input id="field-{key}" bind:value={values[key]} use:linkComplete={pages} autocomplete="off" />
                 <button class="icon" onclick={() => extras.splice(i, 1)} aria-label="Прибрати поле «{key}»">
@@ -354,6 +384,7 @@
     font-size: 0.8rem;
   }
   select,
+  .caption,
   .field input,
   .add-field input {
     width: 100%;

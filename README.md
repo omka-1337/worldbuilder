@@ -55,6 +55,12 @@ infobox:
 **Aedrin** founded the [[Order of Ash|Order]]. See [[#Legacy]].
 ```
 
+Every article can have an infobox picture with a caption, whatever its type:
+drop a file onto the editor, pick one or paste it. It is saved in the
+article's folder under the article's name (`Valmor/Valmor.png`), so it moves
+along with the article. PNG, JPEG, GIF and WebP are accepted; SVG is not, as
+it can carry scripts, and files from a world are served sandboxed.
+
 Articles can be grouped by dragging one onto another in the sidebar tree.
 The dropped article moves into a folder named after the parent, next to the
 parent's file (`War.md` + `War/Battle.md`); its own children move with it,

@@ -288,7 +288,8 @@ type View struct {
 	Aliases        []string  `json:"aliases"`
 	Categories     []string  `json:"categories"`
 	Infobox        []Row     `json:"infobox"`
-	Image          string    `json:"image,omitempty"` // rendered HTML
+	Image          string    `json:"image,omitempty"`   // rendered HTML
+	Caption        string    `json:"caption,omitempty"` // rendered HTML
 	HTML           string    `json:"html"`
 	Headings       []Heading `json:"headings"`
 	Backlinks      []string  `json:"backlinks"`
@@ -339,10 +340,11 @@ func (v *Vault) Get(title string) (*View, error) {
 	for _, f := range p.Infobox {
 		values[f.Key] = f.Value
 	}
-	if img := values["image"]; img != "" {
+	if img := values[ImageKey]; img != "" {
 		view.Image = v.renderInline(img)
+		view.Caption = v.renderInline(values[CaptionKey])
 	}
-	used := map[string]bool{"image": true}
+	used := map[string]bool{ImageKey: true, CaptionKey: true}
 	for _, fd := range def.Fields {
 		used[fd.Key] = true
 		if val := values[fd.Key]; val != "" {

@@ -42,6 +42,7 @@ func New(lib *library.Library, ui fs.FS) http.Handler {
 	mux.HandleFunc("GET "+w+"/types", s.inWorld(s.types))
 	mux.HandleFunc("PUT "+w+"/types", s.inWorld(s.saveTypes))
 	mux.HandleFunc("GET /w/{world}/files/{path...}", s.inWorld(s.file))
+	mux.HandleFunc("POST "+w+"/images/{title...}", s.inWorld(s.uploadImage))
 
 	mux.Handle("GET /", spa(ui))
 	return localOnly(mux)
@@ -201,7 +202,32 @@ func (s *server) file(w http.ResponseWriter, r *http.Request, v *vault.Vault) {
 		http.NotFound(w, r)
 		return
 	}
+	// A file opened on its own (an SVG, an HTML page someone put in the
+	// world) must not run scripts with access to this app.
+	w.Header().Set("Content-Security-Policy", "sandbox")
+	w.Header().Set("X-Content-Type-Options", "nosniff")
 	http.ServeFileFS(w, r, root, name)
+}
+
+// maxImage bounds uploads; infobox pictures are not meant to be originals.
+const maxImage = 20 << 20
+
+func (s *server) uploadImage(w http.ResponseWriter, r *http.Request, v *vault.Vault) {
+	data, err := io.ReadAll(io.LimitReader(r.Body, maxImage+1))
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if len(data) > maxImage {
+		http.Error(w, "image too large", http.StatusRequestEntityTooLarge)
+		return
+	}
+	name, url, err := v.SaveImage(titleParam(r), data)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	writeJSON(w, map[string]string{"name": name, "url": url})
 }
 
 // titleParam reads a title from the URL, where "_" stands for a space.
