@@ -243,6 +243,7 @@
   let frame = 0
   function animateTo(target: () => [number, number]) {
     cancelAnimationFrame(frame)
+    stopCoasting()
     const [f0, t0] = [from, to]
     const start = performance.now()
     const duration = matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 600
@@ -267,6 +268,45 @@
     }
   }
 
+  // --- inertia ------------------------------------------------------------
+
+  // After a drag or a sideways swipe the axis keeps sliding at the speed
+  // the gesture ended with, slowing down smoothly (friction with a ~325 ms
+  // time constant, as on phones). Speeds are in screen px per ms; positive
+  // moves the view towards later dates.
+  const FRICTION_MS = 325
+  let coast = 0
+
+  function coastAt(v: number) {
+    stopCoasting()
+    if (Math.abs(v) < 0.05 || matchMedia('(prefers-reduced-motion: reduce)').matches) return
+    let last = performance.now()
+    const step = (t: number) => {
+      const dt = Math.min(t - last, 50)
+      last = t
+      const shift = ((v * dt) / Math.max(width - 2 * PAD, 1)) * (to - from)
+      from += shift
+      to += shift
+      v *= Math.exp(-dt / FRICTION_MS)
+      if (Math.abs(v) > 0.02) coast = requestAnimationFrame(step)
+    }
+    coast = requestAnimationFrame(step)
+  }
+
+  function stopCoasting() {
+    cancelAnimationFrame(coast)
+  }
+
+  // The speed of the last ~100 ms of a gesture: recent samples of position
+  // (drag) or of movement (wheel), oldest first. Times are the events' own,
+  // so a busy page that handles them late does not mistake a pause for a
+  // fling.
+  type Sample = { t: number; v: number }
+  const WINDOW_MS = 100
+  function keepRecent(samples: Sample[], t: number) {
+    while (samples.length && t - samples[0].t > WINDOW_MS) samples.shift()
+  }
+
   // --- zoom and pan -------------------------------------------------------
 
   $effect(() => {
@@ -274,9 +314,15 @@
     // Sideways scrolling (two fingers on a touchpad, or Shift + wheel) pans;
     // vertical scrolling and pinching (a wheel event with ctrlKey) zoom
     // around the pointer.
+    // A swipe's speed comes from its last moments; when its events stop the
+    // axis coasts on. Browsers that already add touchpad momentum end their
+    // stream slowly, so nothing doubles up.
+    const swipe: Sample[] = []
+    let swipeEnd: ReturnType<typeof setTimeout>
     const onWheel = (e: WheelEvent) => {
       e.preventDefault()
       cancelAnimationFrame(frame)
+      stopCoasting()
       const unit = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? width : 1 // lines or pages → px
       let dx = e.deltaX * unit
       let dy = e.deltaY * unit
@@ -288,8 +334,18 @@
         const shift = (dx / inner) * span
         from += shift
         to += shift
+        keepRecent(swipe, e.timeStamp)
+        swipe.push({ t: e.timeStamp, v: dx })
+        clearTimeout(swipeEnd)
+        swipeEnd = setTimeout(() => {
+          const moved = swipe.reduce((sum, s) => sum + s.v, 0)
+          const ms = Math.max(swipe.at(-1)!.t - swipe[0].t, 16)
+          swipe.length = 0
+          coastAt(moved / ms)
+        }, 80)
         return
       }
+      swipe.length = 0
       const rect = stage!.getBoundingClientRect()
       const anchor = from + ((e.clientX - rect.left - PAD) / inner) * span
       const [min, max] = fullRange()
@@ -304,11 +360,14 @@
   })
 
   let drag = $state<{ x: number; from: number; to: number; moved: boolean } | null>(null)
+  const dragTrail: Sample[] = [] // pointer x over the last moments of a drag
 
   function onPointerDown(e: PointerEvent) {
     if (e.button !== 0 || (e.target as Element).closest('.point, .bar, .span, .filters')) return
     cancelAnimationFrame(frame)
+    stopCoasting()
     drag = { x: e.clientX, from, to, moved: false }
+    dragTrail.length = 0
     stage!.setPointerCapture(e.pointerId)
   }
 
@@ -319,10 +378,18 @@
     const shift = (dx / Math.max(width - 2 * PAD, 1)) * (drag.to - drag.from)
     from = drag.from - shift
     to = drag.to - shift
+    keepRecent(dragTrail, e.timeStamp)
+    dragTrail.push({ t: e.timeStamp, v: e.clientX })
   }
 
-  function onPointerUp() {
+  function onPointerUp(e: PointerEvent) {
     if (drag && !drag.moved) select(null) // a plain click on empty space closes the panel
+    // Flung: coast on. Held still before letting go: stay put.
+    keepRecent(dragTrail, e.timeStamp)
+    if (drag?.moved && dragTrail.length > 1 && e.timeStamp - dragTrail.at(-1)!.t < 50) {
+      const first = dragTrail[0], last = dragTrail.at(-1)!
+      coastAt(-(last.v - first.v) / Math.max(last.t - first.t, 1))
+    }
     drag = null
   }
 
