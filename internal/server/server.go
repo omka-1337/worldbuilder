@@ -39,6 +39,11 @@ func New(lib *library.Library, ui fs.FS) http.Handler {
 	mux.HandleFunc("GET "+w+"/timeline", s.inWorld(s.timeline))
 	mux.HandleFunc("GET "+w+"/tree", s.inWorld(s.tree))
 	mux.HandleFunc("POST "+w+"/move", s.inWorld(s.move))
+	mux.HandleFunc("POST "+w+"/rename", s.inWorld(s.rename))
+	mux.HandleFunc("DELETE "+w+"/pages/{title...}", s.inWorld(s.deletePage))
+	mux.HandleFunc("POST "+w+"/folders", s.inWorld(s.createFolder))
+	mux.HandleFunc("POST "+w+"/folders/rename", s.inWorld(s.renameFolder))
+	mux.HandleFunc("POST "+w+"/folders/delete", s.inWorld(s.deleteFolder))
 	mux.HandleFunc("PUT "+w+"/calendar", s.inWorld(s.saveCalendar))
 	mux.HandleFunc("POST "+w+"/calendar/preview", s.inWorld(s.previewCalendar))
 	mux.HandleFunc("GET "+w+"/types", s.inWorld(s.types))
@@ -155,16 +160,69 @@ func (s *server) tree(w http.ResponseWriter, r *http.Request, v *vault.Vault) {
 	writeJSON(w, v.Tree())
 }
 
-func (s *server) move(w http.ResponseWriter, r *http.Request, v *vault.Vault) {
-	var req struct {
-		Title  string `json:"title"`
-		Parent string `json:"parent"` // empty: the top level
-	}
+// treeRequest is the body of the tree's actions; each uses some fields.
+type treeRequest struct {
+	Title    string `json:"title"`
+	NewTitle string `json:"newTitle"`
+	Folder   string `json:"folder"` // a folder path; empty: the top level
+	Name     string `json:"name"`
+}
+
+func decodeTree(w http.ResponseWriter, r *http.Request) (treeRequest, bool) {
+	var req treeRequest
 	if err := json.NewDecoder(io.LimitReader(r.Body, 1<<16)).Decode(&req); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
+		return req, false
+	}
+	return req, true
+}
+
+func (s *server) move(w http.ResponseWriter, r *http.Request, v *vault.Vault) {
+	if req, ok := decodeTree(w, r); ok {
+		s.treeResult(w, v, v.Move(req.Title, req.Folder))
+	}
+}
+
+func (s *server) rename(w http.ResponseWriter, r *http.Request, v *vault.Vault) {
+	req, ok := decodeTree(w, r)
+	if !ok {
 		return
 	}
-	if err := v.Move(req.Title, req.Parent); err != nil {
+	title, err := v.Rename(req.Title, req.NewTitle)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	writeJSON(w, map[string]string{"title": title})
+}
+
+func (s *server) deletePage(w http.ResponseWriter, r *http.Request, v *vault.Vault) {
+	s.treeResult(w, v, v.Delete(titleParam(r)))
+}
+
+func (s *server) createFolder(w http.ResponseWriter, r *http.Request, v *vault.Vault) {
+	if req, ok := decodeTree(w, r); ok {
+		_, err := v.CreateFolder(req.Folder)
+		s.treeResult(w, v, err)
+	}
+}
+
+func (s *server) renameFolder(w http.ResponseWriter, r *http.Request, v *vault.Vault) {
+	if req, ok := decodeTree(w, r); ok {
+		_, err := v.RenameFolder(req.Folder, req.Name)
+		s.treeResult(w, v, err)
+	}
+}
+
+func (s *server) deleteFolder(w http.ResponseWriter, r *http.Request, v *vault.Vault) {
+	if req, ok := decodeTree(w, r); ok {
+		s.treeResult(w, v, v.DeleteFolder(req.Folder))
+	}
+}
+
+// treeResult answers a tree action with the new tree, or its error.
+func (s *server) treeResult(w http.ResponseWriter, v *vault.Vault, err error) {
+	if err != nil {
 		writeError(w, err)
 		return
 	}

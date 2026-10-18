@@ -87,7 +87,8 @@ export interface Heading {
 
 export interface TreeNode {
   name: string
-  title?: string // empty for a folder made outside the app
+  path: string // the folder it stands for: a plain folder's own, or where an article's children go
+  title?: string // empty for a plain folder
   type?: string
   children?: TreeNode[]
 }
@@ -122,6 +123,7 @@ export interface PageView {
 export interface Source {
   exists: boolean
   create?: boolean // on save: fail rather than overwrite an existing article
+  folder?: string // on creating: the folder to put it in
   title: string // on save: a different title renames the article
   type: string
   aliases: string[]
@@ -241,8 +243,18 @@ export const api = {
     const r = await check(await fetch(`${w()}/images/${enc(title)}`, { method: 'POST', body: file }))
     return r.json()
   },
-  // Nests an article inside another one, or at the top level with parent "".
-  move: (title: string, parent: string) => send<TreeNode[]>('POST', `${w()}/move`, { title, parent }),
+  // Puts an article into a folder ("" for the top level); an article's own
+  // folder (its tree node's path) makes it that article's child.
+  move: (title: string, folder: string) => send<TreeNode[]>('POST', `${w()}/move`, { title, folder }),
+  rename: async (title: string, newTitle: string) =>
+    (await send<{ title: string }>('POST', `${w()}/rename`, { title, newTitle })).title,
+  // Moves the article to the world's .trash folder.
+  deletePage: async (title: string) => {
+    await check(await fetch(`${w()}/pages/${enc(title)}`, { method: 'DELETE' }))
+  },
+  createFolder: (folder: string) => send<TreeNode[]>('POST', `${w()}/folders`, { folder }),
+  renameFolder: (folder: string, name: string) => send<TreeNode[]>('POST', `${w()}/folders/rename`, { folder, name }),
+  deleteFolder: (folder: string) => send<TreeNode[]>('POST', `${w()}/folders/delete`, { folder }),
   types: () => get<TypeInfo[]>(`${w()}/types`),
   saveCalendar: (calendar: Calendar) => send<World>('PUT', `${w()}/calendar`, calendar),
   previewCalendar: (calendar: Calendar, sample: string) =>

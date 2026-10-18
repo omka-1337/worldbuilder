@@ -3,6 +3,7 @@
   import { router, titleFrom } from '../lib/router.svelte'
   import { store, refresh, reset } from '../lib/store.svelte'
   import Sidebar from './Sidebar.svelte'
+  import Dialogs from './Dialogs.svelte'
   import Ribbon from './Ribbon.svelte'
   import Timeline from '../views/Timeline.svelte'
   import Types from '../views/Types.svelte'
@@ -71,6 +72,7 @@
     <p><a href="/">До списку світів</a></p>
   </main>
 {:else}
+  <Dialogs />
   <div class="layout ribbon-{prefs.ribbon}" class:menu-open={menuOpen}>
     <button class="menu-toggle" onclick={() => (menuOpen = !menuOpen)} aria-label="Меню">☰</button>
     <Ribbon />

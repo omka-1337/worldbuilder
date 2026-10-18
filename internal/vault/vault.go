@@ -46,6 +46,7 @@ type index struct {
 	files     map[string]string  // attachments: lowercased base name → path
 	backlinks map[*Page][]*Page  // target → pages linking to it
 	wanted    map[string]*wanted // Key(missing title) → who links to it
+	folders   map[string]bool    // folders shown in the tree: empty ones, and ones holding articles
 }
 
 type wanted struct {
@@ -114,7 +115,15 @@ func (v *Vault) scan() (World, *index, error) {
 	if err != nil {
 		return world, nil, err
 	}
-	idx := &index{pages: map[string]*Page{}, files: map[string]string{}}
+	idx := &index{pages: map[string]*Page{}, files: map[string]string{}, folders: map[string]bool{}}
+	// Folders count their entries and whether articles lie anywhere inside,
+	// so the tree can show empty folders (just made) but not ones holding
+	// only pictures.
+	type folderInfo struct {
+		entries  int
+		articles bool
+	}
+	folders := map[string]*folderInfo{}
 	err = filepath.WalkDir(v.root, func(p string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
@@ -127,8 +136,24 @@ func (v *Vault) scan() (World, *index, error) {
 			}
 			return nil
 		}
-		if d.IsDir() || rel == worldFile {
+		if rel != "." {
+			if f := folders[path.Dir(rel)]; f != nil {
+				f.entries++
+			}
+		}
+		if d.IsDir() {
+			folders[rel] = &folderInfo{}
 			return nil
+		}
+		if rel == worldFile {
+			return nil
+		}
+		if strings.EqualFold(path.Ext(rel), ".md") {
+			for dir := path.Dir(rel); dir != "."; dir = path.Dir(dir) {
+				if f := folders[dir]; f != nil {
+					f.articles = true
+				}
+			}
 		}
 		if !strings.EqualFold(path.Ext(rel), ".md") {
 			idx.files[strings.ToLower(path.Base(rel))] = rel
@@ -144,6 +169,11 @@ func (v *Vault) scan() (World, *index, error) {
 	})
 	if err != nil {
 		return world, nil, err
+	}
+	for dir, f := range folders {
+		if dir != "." && (f.entries == 0 || f.articles) {
+			idx.folders[dir] = true
+		}
 	}
 	v.link(idx)
 	return world, idx, nil

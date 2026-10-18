@@ -3,8 +3,8 @@ import type { TreeNode } from './api'
 // The article being dragged in the sidebar tree, shared by all tree levels.
 export const drag = $state({
   title: '',
-  over: '', // the row the pointer is over, if it accepts the drop
-  inside: new Set<string>(), // the dragged article and everything nested in it
+  path: '', // the dragged article's own folder: nothing may go inside it
+  over: '', // path of the row under the pointer, if it accepts the drop
 })
 
 // Chrome cancels a drag whose dragstart changes the layout under the
@@ -14,26 +14,20 @@ let pending: ReturnType<typeof setTimeout> | undefined
 
 export function startDrag(node: TreeNode) {
   clearTimeout(pending)
-  pending = setTimeout(() => begin(node))
-}
-
-function begin(node: TreeNode) {
-  const inside = new Set<string>()
-  const walk = (n: TreeNode) => {
-    if (n.title) inside.add(n.title)
-    n.children?.forEach(walk)
-  }
-  walk(node)
-  drag.title = node.title ?? ''
-  drag.inside = inside
+  pending = setTimeout(() => {
+    drag.title = node.title ?? ''
+    drag.path = node.path
+  })
 }
 
 export function endDrag() {
   clearTimeout(pending)
   drag.title = ''
+  drag.path = ''
   drag.over = ''
-  drag.inside = new Set()
 }
 
-// An article accepts a drop unless it is the dragged one or inside it.
-export const accepts = (node: TreeNode) => !!drag.title && !!node.title && !drag.inside.has(node.title)
+// Any article or folder accepts a drop, except the dragged article and
+// everything nested in it.
+export const accepts = (node: TreeNode) =>
+  !!drag.title && node.path !== drag.path && !node.path.startsWith(drag.path + '/')

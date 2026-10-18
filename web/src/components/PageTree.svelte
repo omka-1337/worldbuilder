@@ -1,8 +1,10 @@
 <script lang="ts">
   import type { SvelteSet } from 'svelte/reactivity'
   import Self from './PageTree.svelte'
+  import Icon from './Icon.svelte'
   import { pageHref, type TreeNode } from '../lib/api'
   import { drag, startDrag, endDrag, accepts } from '../lib/drag.svelte'
+  import { typeColor } from '../lib/colors'
 
   let {
     nodes,
@@ -10,51 +12,56 @@
     current,
     expanded,
     onmove,
+    onmenu,
   }: {
     nodes: TreeNode[]
     depth?: number
     current: string // title of the open article
-    expanded: SvelteSet<string>
-    onmove: (title: string, parent: string) => void
+    expanded: SvelteSet<string> // paths of open groups
+    onmove: (title: string, folder: string) => void
+    onmenu: (e: MouseEvent, node: TreeNode) => void
   } = $props()
 
-  const id = (n: TreeNode) => n.title ?? 'folder:' + n.name
+  const toggle = (n: TreeNode) => (expanded.has(n.path) ? expanded.delete(n.path) : expanded.add(n.path))
 
-  // Hovering a collapsed group while dragging opens it after a moment.
+  // Hovering a closed group while dragging opens it after a moment.
   let openTimer: ReturnType<typeof setTimeout>
 
   function onDragOver(e: DragEvent, n: TreeNode) {
     if (!accepts(n)) return
     e.preventDefault()
+    e.stopPropagation()
     e.dataTransfer!.dropEffect = 'move'
-    if (drag.over !== n.title) {
-      drag.over = n.title!
+    if (drag.over !== n.path) {
+      drag.over = n.path
       clearTimeout(openTimer)
-      if (n.children?.length && !expanded.has(id(n))) openTimer = setTimeout(() => expanded.add(id(n)), 700)
+      if (n.children?.length && !expanded.has(n.path)) openTimer = setTimeout(() => expanded.add(n.path), 700)
     }
   }
 
   function onDrop(e: DragEvent, n: TreeNode) {
     if (!accepts(n)) return
     e.preventDefault()
+    e.stopPropagation()
     clearTimeout(openTimer)
     const title = drag.title
     endDrag()
-    onmove(title, n.title!)
+    onmove(title, n.path)
   }
 </script>
 
 <ul class="tree">
-  {#each nodes as n (id(n))}
-    {@const open = expanded.has(id(n))}
+  {#each nodes as n (n.path)}
+    {@const open = expanded.has(n.path)}
+    {@const folder = !n.title}
     <li>
       <div
         class="row"
         class:active={!!n.title && n.title === current}
-        class:over={drag.over === n.title && !!n.title}
-        class:dragged={drag.title === n.title && !!n.title}
+        class:over={drag.over === n.path}
+        class:dragged={!!n.title && drag.title === n.title}
         style:padding-left="{depth * 0.9 + 0.15}rem"
-        draggable={!!n.title}
+        draggable={!folder}
         role="treeitem"
         aria-selected={!!n.title && n.title === current}
         aria-expanded={n.children?.length ? open : undefined}
@@ -66,29 +73,35 @@
         }}
         ondragend={endDrag}
         ondragover={(e) => onDragOver(e, n)}
-        ondragleave={() => drag.over === n.title && (drag.over = '')}
+        ondragleave={() => drag.over === n.path && (drag.over = '')}
         ondrop={(e) => onDrop(e, n)}
+        oncontextmenu={(e) => {
+          e.preventDefault()
+          e.stopPropagation()
+          onmenu(e, n)
+        }}
       >
         {#if n.children?.length}
-          <button
-            class="chevron"
-            class:open
-            onclick={() => (open ? expanded.delete(id(n)) : expanded.add(id(n)))}
-            aria-label={open ? 'Згорнути' : 'Розгорнути'}
-          >
+          <button class="chevron" class:open onclick={() => toggle(n)} aria-label={open ? 'Згорнути' : 'Розгорнути'}>
             <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="m9 6 6 6-6 6" /></svg>
           </button>
         {:else}
           <span class="chevron-space"></span>
         {/if}
-        {#if n.title}
-          <a href={pageHref(n.title)} draggable="false">{n.name}</a>
+        {#if folder}
+          <button class="name folder" onclick={() => toggle(n)}>
+            <span class="icon"><Icon name={open && n.children?.length ? 'folder-open' : 'folder'} size={15} /></span>
+            <span class="text">{n.name}</span>
+          </button>
         {:else}
-          <button class="folder" onclick={() => (open ? expanded.delete(id(n)) : expanded.add(id(n)))}>{n.name}</button>
+          <a class="name" href={pageHref(n.title!)} draggable="false">
+            <span class="icon" style:color={n.type ? typeColor(n.type) : undefined}><Icon name="file" size={15} /></span>
+            <span class="text">{n.name}</span>
+          </a>
         {/if}
       </div>
       {#if open && n.children?.length}
-        <Self nodes={n.children} depth={depth + 1} {current} {expanded} {onmove} />
+        <Self nodes={n.children} depth={depth + 1} {current} {expanded} {onmove} {onmenu} />
       {/if}
     </li>
   {/each}
@@ -113,7 +126,7 @@
   .row.active {
     background: var(--accent-soft);
   }
-  .row.active a {
+  .row.active .name {
     color: var(--accent);
   }
   .row.over {
@@ -123,26 +136,33 @@
   .row.dragged {
     opacity: 0.45;
   }
-  a,
-  .folder {
+  .name {
     flex: 1;
     min-width: 0;
-    padding: 0.2rem 0.4rem 0.2rem 0.15rem;
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.2rem 0.4rem 0.2rem 0.1rem;
     color: var(--text);
+  }
+  a.name:hover {
+    text-decoration: none;
+  }
+  .text {
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
   }
-  a:hover {
-    text-decoration: none;
+  .icon {
+    display: grid;
+    flex: none;
+    color: var(--text-muted);
   }
   .folder {
     border: none;
     background: none;
     text-align: left;
     font: inherit;
-    color: var(--text-muted);
-    font-style: italic;
   }
   .folder:hover {
     background: none;

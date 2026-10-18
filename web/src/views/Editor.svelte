@@ -4,7 +4,7 @@
   import ChipsInput from '../components/ChipsInput.svelte'
   import ImagePicker from '../components/ImagePicker.svelte'
   import { api, key, pageHref, worldHref, HttpError, type FieldDef } from '../lib/api'
-  import { navigate } from '../lib/router.svelte'
+  import { navigate, router } from '../lib/router.svelte'
   import { store, refresh } from '../lib/store.svelte'
   import { linkComplete } from '../lib/linkComplete'
   import { exampleDate } from '../lib/calendar'
@@ -13,6 +13,8 @@
   let { title }: { title: string } = $props()
 
   let isNew = $state(false)
+  // "Create article" from a folder in the tree: where the new one goes.
+  const folder = router.query.get('folder') ?? ''
   let loading = $state(true)
   let saving = $state(false)
   let error = $state('')
@@ -132,7 +134,7 @@
     saving = true
     error = conflict = ''
     try {
-      const newTitle = await api.saveSource(isNew ? name.trim() : originalName, { ...build(), create: isNew })
+      const newTitle = await api.saveSource(isNew ? name.trim() : originalName, { ...build(), create: isNew, folder: isNew ? folder : '' })
       saved = JSON.stringify(build())
       await refresh()
       navigate(pageHref(newTitle), { replace: true })
@@ -171,7 +173,9 @@
 {#if !loading}
   <div class="editor">
     <div class="name">
-      <label for="name" class="label">{isNew ? 'Нова стаття' : 'Назва статті'}</label>
+      <label for="name" class="label">
+        {isNew ? 'Нова стаття' : 'Назва статті'}{#if isNew && folder}<span class="folder">&nbsp;· у папці {folder.replaceAll('/', ' / ')}</span>{/if}
+      </label>
       <input
         id="name"
         bind:this={nameInput}
@@ -338,6 +342,11 @@
     justify-content: flex-end;
     align-self: end;
     padding-bottom: 0.35rem;
+  }
+  .folder {
+    text-transform: none;
+    letter-spacing: 0;
+    font-weight: 400;
   }
   .note,
   .warn {

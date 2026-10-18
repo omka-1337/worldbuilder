@@ -571,7 +571,7 @@ func TestNesting(t *testing.T) {
 	}
 
 	// A page cannot go inside itself or its own descendant.
-	if err := v.Move("Головна", "Битва під Тліню"); !errors.As(err, new(*InvalidError)) {
+	if err := v.Move("Головна", "Головна/Вальмор/Битва під Тліню"); !errors.As(err, new(*InvalidError)) {
 		t.Errorf("cycle: %v", err)
 	}
 
@@ -611,12 +611,12 @@ func TestNesting(t *testing.T) {
 		t.Error("folder not renamed with its article")
 	}
 
-	// Back to the top level; emptied folders disappear.
+	// Back to the top level, children along.
 	if err := v.Move("Вальмор-на-Попелі", ""); err != nil {
 		t.Fatal(err)
 	}
-	if !exists("Вальмор-на-Попелі/Битва під Тліню.md") || exists("Головна") {
-		t.Error("move to top level or pruning failed")
+	if !exists("Вальмор-на-Попелі/Битва під Тліню.md") || exists("Головна/Вальмор-на-Попелі.md") {
+		t.Error("move to top level failed")
 	}
 }
 
@@ -902,5 +902,101 @@ func TestCalendarSaveAndPreview(t *testing.T) {
 	raw, _ = os.ReadFile(filepath.Join(v.Root(), "world.yaml"))
 	if strings.Contains(string(raw), "calendar") {
 		t.Errorf("empty calendar left in world.yaml:\n%s", raw)
+	}
+}
+
+func TestFolders(t *testing.T) {
+	v := openFixture(t)
+	exists := func(rel string) bool { return fileExists(filepath.Join(v.Root(), filepath.FromSlash(rel))) }
+	folderNode := func(name string) *TreeNode {
+		for _, n := range v.Tree() {
+			if n.Name == name && n.Title == "" {
+				return n
+			}
+		}
+		return nil
+	}
+
+	// A new, empty folder shows in the tree; a folder of pictures does not.
+	if _, err := v.CreateFolder("Персонажі/Маги"); err != nil {
+		t.Fatal(err)
+	}
+	os.MkdirAll(filepath.Join(v.Root(), "Картинки"), 0o755)
+	os.WriteFile(filepath.Join(v.Root(), "Картинки", "x.png"), tinyPNG, 0o644)
+	v.Reload()
+	if n := folderNode("Персонажі"); n == nil || len(n.Children) != 1 || n.Children[0].Path != "Персонажі/Маги" {
+		t.Fatalf("folders in tree: %+v", n)
+	}
+	if folderNode("Картинки") != nil {
+		t.Error("a folder of pictures shows in the tree")
+	}
+	if _, err := v.CreateFolder("../outside"); err == nil {
+		t.Error("folder outside the world created")
+	}
+	if _, err := v.CreateFolder(".hidden"); err == nil {
+		t.Error("hidden folder created")
+	}
+
+	// Articles move into plain folders, and moving the last one out keeps
+	// the folder (the user made it).
+	if err := v.Move("Аедрін Сірий", "Персонажі/Маги"); err != nil {
+		t.Fatal(err)
+	}
+	if !exists("Персонажі/Маги/Аедрін Сірий.md") {
+		t.Fatal("not moved into the folder")
+	}
+	if err := v.Move("Аедрін Сірий", ""); err != nil {
+		t.Fatal(err)
+	}
+	if !exists("Персонажі/Маги") || !exists("Аедрін Сірий.md") {
+		t.Error("folder removed after its last article left, or article not back")
+	}
+
+	// A new article can be made right inside a folder.
+	if _, err := v.SaveSource("Мерлін", Source{Create: true, Title: "Мерлін", Folder: "Персонажі/Маги", Body: "x"}); err != nil {
+		t.Fatal(err)
+	}
+	if !exists("Персонажі/Маги/Мерлін.md") {
+		t.Error("new article not made in the folder")
+	}
+
+	// Renaming: plain folders directly, articles keep their old title.
+	if _, err := v.RenameFolder("Персонажі", "Герої"); err != nil {
+		t.Fatal(err)
+	}
+	if !exists("Герої/Маги/Мерлін.md") {
+		t.Error("folder not renamed")
+	}
+	if _, err := v.RenameFolder("Вальмор", "Інше"); err == nil {
+		t.Error("renamed an article's folder directly")
+	}
+	if title, err := v.Rename("Вальмор", "Вальмор Новий"); err != nil || title != "Вальмор Новий" {
+		t.Fatalf("rename = %q, %v", title, err)
+	}
+	if view, _ := v.Get("Вальмор"); view == nil || view.Title != "Вальмор Новий" {
+		t.Error("old title does not lead to the renamed article")
+	}
+
+	// Deleting goes to .trash, nothing is lost; a second one with the same
+	// name gets its own place there.
+	if err := v.Delete("Мерлін"); err != nil {
+		t.Fatal(err)
+	}
+	if exists("Герої/Маги/Мерлін.md") || !exists(".trash/Мерлін.md") {
+		t.Error("article not moved to the trash")
+	}
+	v.SaveSource("Мерлін", Source{Create: true, Title: "Мерлін", Body: "y"})
+	v.Delete("Мерлін")
+	if !exists(".trash/Мерлін (2).md") {
+		t.Error("second deletion overwrote the first in the trash")
+	}
+	if err := v.DeleteFolder("Герої"); err != nil {
+		t.Fatal(err)
+	}
+	if exists("Герої") || !exists(".trash/Герої/Маги") {
+		t.Error("folder not moved to the trash")
+	}
+	if _, err := v.Get("Мерлін"); err == nil {
+		t.Error("deleted article still in the index")
 	}
 }

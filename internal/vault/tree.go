@@ -1,6 +1,7 @@
 package vault
 
 import (
+	"fmt"
 	"os"
 	"path"
 	"path/filepath"
@@ -15,10 +16,12 @@ import (
 // so the hierarchy is visible in any file manager, and since links point at
 // titles rather than paths, moving never breaks them.
 
-// TreeNode is one entry of the article tree. A folder created outside the
-// app, with no article of the same name next to it, has no Title.
+// TreeNode is one entry of the article tree: an article, or a plain folder
+// (no Title). Path is the folder the node stands for: a plain folder's own,
+// or the one an article's children go in.
 type TreeNode struct {
 	Name     string      `json:"name"`
+	Path     string      `json:"path"`
 	Title    string      `json:"title,omitempty"`
 	Type     string      `json:"type,omitempty"`
 	Children []*TreeNode `json:"children,omitempty"`
@@ -42,11 +45,14 @@ func (v *Vault) Tree() []*TreeNode {
 		if n, ok := nodes[dir]; ok {
 			return n
 		}
-		n := &TreeNode{Name: path.Base(dir)}
+		n := &TreeNode{Name: path.Base(dir), Path: dir}
 		nodes[dir] = n
 		parent := nodeFor(path.Dir(dir))
 		parent.Children = append(parent.Children, n)
 		return n
+	}
+	for dir := range v.idx.folders {
+		nodeFor(dir)
 	}
 	for _, p := range v.idx.pages {
 		n := nodeFor(stem(p.Path))
@@ -106,9 +112,10 @@ func (v *Vault) pageAt(dir string) (*Page, bool) {
 	return nil, false
 }
 
-// Move puts the article into parent's folder, or at the top level when
-// parent is empty. Its own children move along with it.
-func (v *Vault) Move(title, parent string) error {
+// Move puts the article into folder ("" for the top level); its own
+// children move along with it. A folder that is an article's (Path of its
+// tree node) makes the article that article's child.
+func (v *Vault) Move(title, folder string) error {
 	v.mu.Lock()
 	defer v.mu.Unlock()
 
@@ -116,29 +123,25 @@ func (v *Vault) Move(title, parent string) error {
 	if !ok {
 		return ErrNotFound
 	}
-	dir := "."
-	if parent != "" {
-		q, ok := v.lookup(parent)
-		if !ok {
-			return ErrNotFound
-		}
-		dir = stem(q.Path)
-		if q == p || dir == stem(p.Path) || strings.HasPrefix(dir, stem(p.Path)+"/") {
-			return &InvalidError{"an article cannot go inside itself"}
-		}
+	dir, err := cleanFolder(folder)
+	if err != nil {
+		return err
+	}
+	own := stem(p.Path)
+	if dir == own || strings.HasPrefix(dir, own+"/") {
+		return &InvalidError{"an article cannot go inside itself"}
 	}
 
 	rel := path.Join(dir, path.Base(p.Path))
 	if rel == p.Path {
 		return nil
 	}
-	abs := func(rel string) string { return filepath.Join(v.root, filepath.FromSlash(rel)) }
-	oldFolder, newFolder := stem(p.Path), stem(rel)
-	hasFolder := isDir(abs(oldFolder))
+	abs := v.abs
+	newFolder := stem(rel)
+	hasFolder := isDir(abs(own))
 	if fileExists(abs(rel)) || (hasFolder && fileExists(abs(newFolder))) {
 		return ErrExists
 	}
-
 	if err := os.MkdirAll(abs(dir), 0o755); err != nil {
 		return err
 	}
@@ -146,12 +149,143 @@ func (v *Vault) Move(title, parent string) error {
 		return err
 	}
 	if hasFolder {
-		if err := os.Rename(abs(oldFolder), abs(newFolder)); err != nil {
+		if err := os.Rename(abs(own), abs(newFolder)); err != nil {
 			return err
 		}
 	}
-	v.pruneEmpty(path.Dir(p.Path))
 	return v.rescanLocked()
+}
+
+// Rename gives an article a new title, as the editor does: the old one
+// stays as an alias so links keep working.
+func (v *Vault) Rename(title, newTitle string) (string, error) {
+	src := v.Source(title)
+	if !src.Exists {
+		return "", ErrNotFound
+	}
+	src.Title = newTitle
+	return v.SaveSource(title, src)
+}
+
+// Delete moves an article to the world's .trash folder, where it can be
+// recovered. Articles nested in it stay, in what becomes a plain folder.
+func (v *Vault) Delete(title string) error {
+	v.mu.Lock()
+	defer v.mu.Unlock()
+	p, ok := v.lookup(title)
+	if !ok {
+		return ErrNotFound
+	}
+	if err := v.toTrash(p.Path); err != nil {
+		return err
+	}
+	return v.rescanLocked()
+}
+
+// CreateFolder makes a folder (and any missing ones above it) and returns
+// its cleaned path.
+func (v *Vault) CreateFolder(folder string) (string, error) {
+	v.mu.Lock()
+	defer v.mu.Unlock()
+	dir, err := cleanFolder(folder)
+	if err != nil || dir == "." {
+		return "", &InvalidError{"invalid folder name"}
+	}
+	if fileExists(v.abs(dir)) {
+		return "", ErrExists
+	}
+	if err := os.MkdirAll(v.abs(dir), 0o755); err != nil {
+		return "", err
+	}
+	return dir, v.rescanLocked()
+}
+
+// RenameFolder renames a plain folder. An article's folder follows its
+// article instead, through Rename.
+func (v *Vault) RenameFolder(folder, name string) (string, error) {
+	v.mu.Lock()
+	defer v.mu.Unlock()
+	dir, err := cleanFolder(folder)
+	if err != nil || dir == "." || !isDir(v.abs(dir)) {
+		return "", ErrNotFound
+	}
+	if _, ok := v.pageAt(dir); ok {
+		return "", &InvalidError{"this folder belongs to an article; rename the article"}
+	}
+	name = SafeName(name)
+	if name == "" {
+		return "", &InvalidError{"invalid folder name"}
+	}
+	to := path.Join(path.Dir(dir), name)
+	if to == dir {
+		return dir, nil
+	}
+	if fileExists(v.abs(to)) && !sameFile(v.abs(to), v.abs(dir)) {
+		return "", ErrExists
+	}
+	if err := os.Rename(v.abs(dir), v.abs(to)); err != nil {
+		return "", err
+	}
+	return to, v.rescanLocked()
+}
+
+// DeleteFolder moves a plain folder, with everything in it, to .trash.
+func (v *Vault) DeleteFolder(folder string) error {
+	v.mu.Lock()
+	defer v.mu.Unlock()
+	dir, err := cleanFolder(folder)
+	if err != nil || dir == "." || !isDir(v.abs(dir)) {
+		return ErrNotFound
+	}
+	if _, ok := v.pageAt(dir); ok {
+		return &InvalidError{"this folder belongs to an article; delete the article"}
+	}
+	if err := v.toTrash(dir); err != nil {
+		return err
+	}
+	return v.rescanLocked()
+}
+
+// toTrash moves rel into the world's hidden .trash folder under a name not
+// taken there yet. Callers hold v.mu.
+func (v *Vault) toTrash(rel string) error {
+	trash := v.abs(".trash")
+	if err := os.MkdirAll(trash, 0o755); err != nil {
+		return err
+	}
+	base := path.Base(rel)
+	ext := path.Ext(base)
+	if isDir(v.abs(rel)) {
+		ext = ""
+	}
+	name := base
+	for i := 2; fileExists(filepath.Join(trash, name)); i++ {
+		name = fmt.Sprintf("%s (%d)%s", strings.TrimSuffix(base, ext), i, ext)
+	}
+	return os.Rename(v.abs(rel), filepath.Join(trash, name))
+}
+
+func (v *Vault) abs(rel string) string {
+	return filepath.Join(v.root, filepath.FromSlash(rel))
+}
+
+// cleanFolder checks a folder path from the browser: relative, inside the
+// world, no hidden parts. "" means the top level, returned as ".".
+func cleanFolder(folder string) (string, error) {
+	folder = strings.TrimSpace(strings.ReplaceAll(folder, "\\", "/"))
+	if folder == "" || folder == "." {
+		return ".", nil
+	}
+	dir := path.Clean(folder)
+	if path.IsAbs(dir) || dir == ".." || strings.HasPrefix(dir, "../") {
+		return "", &InvalidError{"invalid folder"}
+	}
+	for _, seg := range strings.Split(dir, "/") {
+		if strings.HasPrefix(seg, ".") || SafeName(seg) != seg {
+			return "", &InvalidError{"invalid folder name"}
+		}
+	}
+	return dir, nil
 }
 
 // renameFolder follows a page renamed from old to rel: its children's folder
@@ -163,18 +297,6 @@ func (v *Vault) renameFolder(old, rel string) (bool, error) {
 		return false, nil
 	}
 	return true, os.Rename(from, to)
-}
-
-// pruneEmpty removes dir and its parents while they are empty folders left
-// behind by moves, stopping at the vault root.
-func (v *Vault) pruneEmpty(dir string) {
-	for dir != "." && dir != "/" && dir != "" {
-		// os.Remove refuses a folder that still has anything in it.
-		if err := os.Remove(filepath.Join(v.root, filepath.FromSlash(dir))); err != nil {
-			return
-		}
-		dir = path.Dir(dir)
-	}
 }
 
 func isDir(name string) bool {

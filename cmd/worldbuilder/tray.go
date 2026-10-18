@@ -52,7 +52,7 @@ func runTray(url, library string, quit func()) {
 		systray.SetTitle("Worldbuilder")
 		systray.SetTooltip("Worldbuilder — " + url)
 		open := systray.AddMenuItem("Відкрити Worldbuilder", url)
-		folder := systray.AddMenuItem("Відкрити теку світів", library)
+		folder := systray.AddMenuItem("Відкрити папку світів", library)
 		systray.AddSeparator()
 		stop := systray.AddMenuItem("Зупинити Worldbuilder", "")
 		systray.SetOnTapped(func() { openBrowser(url) })

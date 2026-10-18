@@ -15,8 +15,9 @@ import (
 // file's frontmatter is an implementation detail the user never sees.
 type Source struct {
 	Exists     bool     `json:"exists"`
-	Create     bool     `json:"create"` // on save: fail if the title is taken
-	Title      string   `json:"title"`  // on save: a different title renames the page
+	Create     bool     `json:"create"`           // on save: fail if the title is taken
+	Title      string   `json:"title"`            // on save: a different title renames the page
+	Folder     string   `json:"folder,omitempty"` // on creating: the folder to put it in
 	Type       string   `json:"type"`
 	Aliases    []string `json:"aliases"`
 	Categories []string `json:"categories"`
@@ -82,9 +83,16 @@ func (v *Vault) SaveSource(title string, src Source) (string, error) {
 	aliases := cleanList(src.Aliases)
 	switch {
 	case !exists:
-		rel = fileNameFor(newTitle)
-		if taken || fileExists(filepath.Join(v.root, rel)) {
+		dir, err := cleanFolder(src.Folder)
+		if err != nil {
+			return "", err
+		}
+		rel = path.Join(dir, fileNameFor(newTitle))
+		if taken || fileExists(filepath.Join(v.root, filepath.FromSlash(rel))) {
 			return "", ErrExists
+		}
+		if err := os.MkdirAll(v.abs(dir), 0o755); err != nil {
+			return "", err
 		}
 	case Key(newTitle) == Key(page.Title):
 		rel = page.Path
