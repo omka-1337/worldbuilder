@@ -11,6 +11,10 @@ make              # builds the UI and the ./worldbuilder binary
 ./worldbuilder    # opens the world picker in the browser
 ```
 
+While it runs, a tray icon opens the app or the worlds folder and stops the
+server; `-no-tray` turns it off (it is also off when there is no desktop
+session, e.g. over SSH, and in cross-compiled macOS builds, which lack cgo).
+
 Worlds live in `<Documents>/Worldbuilder/`: on Linux the documents folder
 comes from `~/.config/user-dirs.dirs`, on Windows it is the Documents known
 folder (OneDrive redirection included). Use `-library <path>` for another

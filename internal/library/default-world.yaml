@@ -12,7 +12,7 @@ types:
     label: Персонаж
     color: "#8e5bd4"
     fields:
-      - { key: born, label: Народження, type: date }
+      - { key: born, label: Народження, type: date, end: died }
       - { key: died, label: Смерть, type: date }
       - { key: species, label: Раса }
       - { key: affiliation, label: Приналежність }

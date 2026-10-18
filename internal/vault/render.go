@@ -33,6 +33,7 @@ func newMarkdown(v *Vault) goldmark.Markdown {
 		goldmark.WithParserOptions(
 			parser.WithAutoHeadingID(),
 			parser.WithInlineParsers(util.Prioritized(&wikilink.Parser{}, 199)),
+			parser.WithASTTransformers(util.Prioritized(calloutTransformer{}, 100)),
 		),
 		goldmark.WithRendererOptions(
 			renderer.WithNodeRenderers(util.Prioritized(&linkRenderer{v: v}, 199)),
@@ -85,8 +86,10 @@ func (v *Vault) extractLinks(p *Page) []string {
 	collect := func(src []byte) {
 		doc := v.md.Parser().Parse(text.NewReader(src))
 		_ = ast.Walk(doc, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
-			if l, ok := n.(*wikilink.Node); ok && entering && len(l.Target) > 0 && !isImage(string(l.Target)) {
-				links = append(links, string(l.Target))
+			if l, ok := n.(*wikilink.Node); ok && entering {
+				if target := wikiTarget(l); target != "" && !isImage(target) {
+					links = append(links, target)
+				}
 			}
 			return ast.WalkContinue, nil
 		})
@@ -116,6 +119,13 @@ func (v *Vault) fileURL(rel string) string {
 	return v.base + "/files/" + strings.Join(parts, "/")
 }
 
+// wikiTarget is the page a wikilink points to. Inside a table, Obsidian
+// writes [[Page\|label]] to keep the pipe from splitting the cell; the
+// backslash is not part of the title.
+func wikiTarget(n *wikilink.Node) string {
+	return strings.TrimSpace(strings.TrimSuffix(string(n.Target), `\`))
+}
+
 func isImage(name string) bool {
 	switch strings.ToLower(path.Ext(name)) {
 	case ".apng", ".avif", ".gif", ".jpg", ".jpeg", ".png", ".svg", ".webp":
@@ -138,7 +148,7 @@ func (r *linkRenderer) render(w util.BufWriter, src []byte, node ast.Node, enter
 	if !ok {
 		return ast.WalkStop, fmt.Errorf("unexpected node %T", node)
 	}
-	target := string(n.Target)
+	target := wikiTarget(n)
 
 	if n.Embed && isImage(target) {
 		if !entering {
@@ -149,11 +159,20 @@ func (r *linkRenderer) render(w util.BufWriter, src []byte, node ast.Node, enter
 			fmt.Fprintf(w, `<span class="missing-file">%s</span>`, util.EscapeHTML(n.Target))
 			return ast.WalkSkipChildren, nil
 		}
-		alt := plainText(src, n)
-		if alt == target {
+		// The part after | is alt text, or Obsidian-style display options:
+		// a width (300), a size (300x200) or an alignment (left, right, center).
+		alt, attrs := plainText(src, n), ""
+		switch opt := strings.ToLower(strings.TrimSpace(alt)); {
+		case alt == target || alt == string(n.Target):
+			alt = ""
+		case embedSize.MatchString(opt):
+			attrs = fmt.Sprintf(` width="%s"`, embedSize.FindStringSubmatch(opt)[1])
+			alt = ""
+		case opt == "left" || opt == "right" || opt == "center":
+			attrs = ` class="align-` + opt + `"`
 			alt = ""
 		}
-		fmt.Fprintf(w, `<img src="%s" alt="%s">`, util.EscapeHTML([]byte(r.v.fileURL(rel))), util.EscapeHTML([]byte(alt)))
+		fmt.Fprintf(w, `<img src="%s" alt="%s"%s>`, util.EscapeHTML([]byte(r.v.fileURL(rel))), util.EscapeHTML([]byte(alt)), attrs)
 		return ast.WalkSkipChildren, nil
 	}
 

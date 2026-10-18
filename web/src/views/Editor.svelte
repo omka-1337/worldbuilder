@@ -247,6 +247,9 @@
         <div class="group">
           <span class="label">Інфобокс</span>
           {#each schema as f (f.key)}
+            {#if f.type === 'section'}
+              <span class="section">{f.label}</span>
+            {:else}
             <label class="field">
               <span>{f.label}</span>
               <input
@@ -260,6 +263,7 @@
                 <small class="warn">Без числа року стаття не з'явиться на таймлайні.</small>
               {/if}
             </label>
+            {/if}
           {/each}
           {#each extras as key, i (key)}
             <div class="field">
@@ -399,6 +403,13 @@
   .field > span,
   .field > label {
     font-weight: 600;
+  }
+  .section {
+    margin-top: 0.4rem;
+    padding-bottom: 0.15rem;
+    border-bottom: 1px solid var(--border);
+    font-size: 0.85rem;
+    font-weight: 700;
   }
   .with-remove {
     display: flex;

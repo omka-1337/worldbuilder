@@ -20,7 +20,13 @@
   document.title = `Типи статей — ${store.world?.name}`
   api.types().then(reset)
 
+  // Fields are paired (born → died) by a handle that exists before a new
+  // field has a key: the key for saved fields, a fresh id for new ones.
+  let nextId = 0
+  const newField = () => ({ key: '', label: '', type: '', end: '', _id: `new-${nextId++}` })
+
   function reset(list: TypeInfo[]) {
+    for (const t of list) for (const f of t.fields) (f._id = f.key), (f.end ??= '')
     types = list
     saved = JSON.stringify(list)
     selected = Math.min(selected, Math.max(list.length - 1, 0))
@@ -45,7 +51,7 @@
     // New types take the first palette color nobody uses yet.
     const used = new Set(types.map((t) => t.color))
     const color = palette.find((p) => !used.has(p.color))?.color ?? ''
-    types.push({ key: '', label: '', color, event: false, fields: [{ key: '', label: '', type: '' }], count: 0 })
+    types.push({ key: '', label: '', color, event: false, fields: [newField()], count: 0 })
     selected = types.length - 1
     await tick()
     nameInput?.focus()
@@ -77,7 +83,15 @@
       // Keep the same type selected; a new one is matched by its label.
       const key = current?.key
       const label = current?.label.trim()
-      const fresh = await api.saveTypes(types)
+      // The server knows fields by key, or by label for the ones just added.
+      const payload = types.map((t) => ({
+        ...t,
+        fields: t.fields.map(({ _id, ...f }) => {
+          const target = f.end ? t.fields.find((g) => g._id === f.end && g.type === 'date') : undefined
+          return { ...f, end: f.type === 'date' && target ? target.key || target.label.trim() : '' }
+        }),
+      }))
+      const fresh = await api.saveTypes(payload)
       reset(fresh)
       const i = fresh.findIndex((t) => (key ? t.key === key : t.label === label))
       if (i >= 0) selected = i
@@ -177,13 +191,23 @@
         <ol class="fields">
           {#each current.fields as f, i (i)}
             <li>
+              <div class="field-row">
               <input bind:value={f.label} placeholder="Назва поля" aria-label="Назва поля" />
               <div class="kind" role="radiogroup" aria-label="Вид поля">
-                <button class:on={f.type !== 'date'} onclick={() => (f.type = '')} role="radio" aria-checked={f.type !== 'date'}>
+                <button class:on={!f.type} onclick={() => (f.type = '')} role="radio" aria-checked={!f.type}>
                   Текст
                 </button>
                 <button class:on={f.type === 'date'} onclick={() => (f.type = 'date')} role="radio" aria-checked={f.type === 'date'}>
                   Дата
+                </button>
+                <button
+                  class:on={f.type === 'section'}
+                  onclick={() => (f.type = 'section')}
+                  role="radio"
+                  aria-checked={f.type === 'section'}
+                  title="Заголовок, що групує поля під ним"
+                >
+                  Розділ
                 </button>
               </div>
               <button class="icon" disabled={i === 0} onclick={() => moveField(i, -1)} aria-label="Вище"><Icon name="up" size={16} /></button>
@@ -191,14 +215,25 @@
                 <Icon name="down" size={16} />
               </button>
               <button class="icon" onclick={() => current.fields.splice(i, 1)} aria-label="Видалити поле"><Icon name="trash" size={16} /></button>
+              </div>
+              {#if f.type === 'date'}
+                {@const others = current.fields.filter((g) => g !== f && g.type === 'date')}
+                <label class="period">
+                  <span>Кінець періоду</span>
+                  <select bind:value={f.end} disabled={!others.length}>
+                    <option value="">{others.length ? 'немає — окрема дата' : 'додайте ще одне поле-дату'}</option>
+                    {#each others as g (g._id)}<option value={g._id}>{g.label.trim() || 'поле без назви'}</option>{/each}
+                  </select>
+                </label>
+              {/if}
             </li>
           {/each}
         </ol>
       {:else}
         <p class="muted">Полів ще немає.</p>
       {/if}
-      <button onclick={() => current.fields.push({ key: '', label: '', type: '' })}>+ Додати поле</button>
-      <p class="muted small">Поля з видом «Дата» потрапляють на таймлайн. Порядок полів — це порядок рядків в інфобоксі.</p>
+      <button onclick={() => current.fields.push(newField())}>+ Додати поле</button>
+      <p class="muted small">Поля з видом «Дата» потрапляють на таймлайн; дві дати можна зв'язати в період (народження → смерть), тоді на таймлайні це буде смуга. «Розділ» — підзаголовок, що групує поля під ним. Порядок полів — це порядок рядків в інфобоксі.</p>
 
       <footer>
         <button class="danger" onclick={removeType}><Icon name="trash" size={16} /> Видалити тип</button>
@@ -379,6 +414,23 @@
     gap: 0.4rem;
   }
   .fields li {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+  }
+  .period {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding-left: 0.6rem;
+    font-size: 0.82rem;
+    color: var(--text-muted);
+  }
+  .period select {
+    padding: 0.15rem 0.4rem;
+    font-size: 0.85rem;
+  }
+  .field-row {
     display: flex;
     gap: 0.35rem;
     align-items: center;

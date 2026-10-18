@@ -32,6 +32,7 @@ func main() {
 	root := flag.String("library", defaultRoot, "folder that holds the worlds, one subfolder each")
 	addr := flag.String("addr", "127.0.0.1:7777", "address to listen on")
 	noOpen := flag.Bool("no-open", false, "do not open the browser")
+	noTray := flag.Bool("no-tray", false, "do not show the tray icon")
 	flag.Usage = func() {
 		fmt.Fprintf(flag.CommandLine.Output(), "usage: worldbuilder [flags]\n\n")
 		flag.PrintDefaults()
@@ -43,12 +44,12 @@ func main() {
 	}
 	explicitAddr := false
 	flag.Visit(func(f *flag.Flag) { explicitAddr = explicitAddr || f.Name == "addr" })
-	if err := run(*root, *addr, explicitAddr, !*noOpen); err != nil {
+	if err := run(*root, *addr, explicitAddr, !*noOpen, !*noTray && trayAvailable()); err != nil {
 		log.Fatal(err)
 	}
 }
 
-func run(root, addr string, explicitAddr, open bool) error {
+func run(root, addr string, explicitAddr, open, tray bool) error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
@@ -86,13 +87,31 @@ func run(root, addr string, explicitAddr, open bool) error {
 		openBrowser(url)
 	}
 
-	select {
-	case err := <-errc:
-		if !errors.Is(err, http.ErrServerClosed) {
-			return err
+	// Ctrl+C, the tray's Stop item or a server failure all end up here: the
+	// context is cancelled and the tray (which owns the main thread, as the
+	// GUI requires on some systems) is told to go.
+	var serveErr error
+	go func() {
+		select {
+		case err := <-errc:
+			if !errors.Is(err, http.ErrServerClosed) {
+				serveErr = err
+			}
+		case <-ctx.Done():
 		}
-	case <-ctx.Done():
+		stop()
+		if tray {
+			quitTray()
+		}
+	}()
+	if tray {
+		runTray(url, lib.Root(), stop)
 	}
+	<-ctx.Done()
+	if serveErr != nil {
+		return serveErr
+	}
+
 	shutdown, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	return srv.Shutdown(shutdown)

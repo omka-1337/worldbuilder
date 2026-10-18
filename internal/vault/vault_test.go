@@ -237,23 +237,32 @@ func TestTimeline(t *testing.T) {
 	}
 }
 
-func TestParseYears(t *testing.T) {
+func TestParseDate(t *testing.T) {
+	type pt = datePoint
 	cases := []struct {
 		in         string
-		start, end int
+		start, end pt
 		ok         bool
 	}{
-		{"312 ЕП", 312, 0, true},
-		{"340–347 ЕП", 340, 347, true},
-		{"120 ЕП, [[Вальмор]]", 120, 0, true},
-		{"-40", -40, 0, true},
-		{"−200 — −150", -200, -150, true},
-		{"невідомо", 0, 0, false},
+		{"312 ЕП", pt{0, 312, 0}, pt{}, true},
+		{"340–347 ЕП", pt{0, 340, 0}, pt{0, 347, 0}, true},
+		{"120 ЕП, [[Вальмор]]", pt{0, 120, 0}, pt{}, true},
+		{"-40", pt{0, -40, 0}, pt{}, true},
+		{"−200 — −150", pt{0, -200, 0}, pt{0, -150, 0}, true},
+		{"139.096 III Епохи", pt{3, 139, 96}, pt{}, true},
+		{"144.087 — 144.125 III Епохи", pt{3, 144, 87}, pt{3, 144, 125}, true},
+		{"142 р. III Епохи — 145 р. III Епохи", pt{3, 142, 0}, pt{3, 145, 0}, true},
+		{"211-224 III Епохи", pt{3, 211, 0}, pt{3, 224, 0}, true},
+		{"145 р. ІІІ Епохи", pt{3, 145, 0}, pt{}, true},  // Cyrillic І
+		{"224-2XX III Епохи", pt{3, 224, 0}, pt{}, true}, // an unknown end is dropped
+		{"V Епоха, 12", pt{5, 12, 0}, pt{}, true},
+		{"[[СМ-16]] 450", pt{0, 450, 0}, pt{}, true}, // digits inside links are not dates
+		{"невідомо", pt{}, pt{}, false},
 	}
 	for _, c := range cases {
-		start, end, ok := parseYears(c.in)
-		if start != c.start || end != c.end || ok != c.ok {
-			t.Errorf("parseYears(%q) = %d, %d, %v", c.in, start, end, ok)
+		r, ok := parseDate(c.in)
+		if ok != c.ok || r.start != c.start || r.end != c.end {
+			t.Errorf("parseDate(%q) = %+v, %v; want %+v–%+v", c.in, r, ok, c.start, c.end)
 		}
 	}
 }
@@ -550,5 +559,169 @@ func TestInfoboxImage(t *testing.T) {
 	}
 	if view, _ := v.Get("Аедрін Сірий"); !strings.Contains(view.Image, "/files/%D0%93%D0%BE%D0%BB%D0%BE%D0%B2%D0%BD%D0%B0/") {
 		t.Errorf("image not found after move: %s", view.Image)
+	}
+}
+
+func TestObsidianSyntax(t *testing.T) {
+	files := map[string]string{}
+	for k, v := range fixture {
+		files[k] = v
+	}
+	files["pic.png"] = string(tinyPNG)
+	files["Нотатки.md"] = `> [!warning] Не канон
+> Ця частина ще [[Вальмор|обговорюється]].
+> Друга лінія.
+
+> [!question]
+> Без заголовка.
+
+> Звичайна цитата.
+
+| Хто | Де |
+| --- | --- |
+| [[Аедрін Сірий\|Аедрін]] | [[Вальмор]] |
+
+![[pic.png|left]] ![[pic.png|300]] ![[pic.png|Підпис]]
+`
+	v, err := Open(writeWorld(t, files), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	view, err := v.Get("Нотатки")
+	if err != nil {
+		t.Fatal(err)
+	}
+	h := view.HTML
+	for _, want := range []string{
+		`<blockquote class="callout callout-warning">`,
+		`<p class="callout-title">Не канон</p>`,
+		`<p class="callout-title">Питання</p>`,
+		`<blockquote>`, // a plain quote stays a quote
+		`class="align-left"`, `width="300"`, `alt="Підпис"`,
+	} {
+		if !strings.Contains(h, want) {
+			t.Errorf("missing %s in:\n%s", want, h)
+		}
+	}
+	if strings.Contains(h, "[!warning]") || strings.Contains(h, "[!question]") {
+		t.Errorf("callout marker left in output:\n%s", h)
+	}
+	if !strings.Contains(h, ">обговорюється</a>") || !strings.Contains(h, "Друга лінія") {
+		t.Errorf("callout body lost:\n%s", h)
+	}
+	// The escaped pipe in a table still makes a working link.
+	if strings.Contains(h, `wikilink new`) {
+		t.Errorf("escaped-pipe link is red:\n%s", h)
+	}
+	if a, _ := v.Get("Аедрін Сірий"); !slices.Contains(a.Backlinks, "Нотатки") {
+		t.Errorf("escaped-pipe link not indexed: %v", a.Backlinks)
+	}
+}
+
+func TestInfoboxSectionsAndBanner(t *testing.T) {
+	files := map[string]string{}
+	for k, v := range fixture {
+		files[k] = v
+	}
+	files["wide.png"] = string(tinyPNG)
+	files["world.yaml"] = `
+types:
+  war:
+    label: Війна
+    fields:
+      - { key: date, label: Дата, type: date }
+      - { key: losses, label: Втрати, type: section }
+      - { key: a, label: Сайнора }
+      - { key: b, label: Федерація }
+      - { key: family, label: Родина, type: section }
+      - { key: c, label: Дружина }
+`
+	files["Війна.md"] = "---\ntype: war\nbanner: \"![[wide.png]]\"\nbanner_y: 0.3\ninfobox:\n  date: 142\n  a: 41 000\n  b: 52 000\n---\nТекст.\n"
+	v, err := Open(writeWorld(t, files), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	view, _ := v.Get("Війна")
+	var rows []string
+	for _, r := range view.Infobox {
+		if r.Section {
+			rows = append(rows, "## "+r.Label)
+		} else {
+			rows = append(rows, r.Label)
+		}
+	}
+	// "Родина" has no filled field under it, so its heading is left out.
+	if !slices.Equal(rows, []string{"Дата", "## Втрати", "Сайнора", "Федерація"}) {
+		t.Errorf("rows = %v", rows)
+	}
+	if !strings.HasSuffix(view.Banner, "/files/wide.png") || view.BannerY != 0.3 {
+		t.Errorf("banner = %q at %v", view.Banner, view.BannerY)
+	}
+	// Editing through the form keeps the banner, which the form does not show.
+	src := v.Source("Війна")
+	src.Body = "Інший текст.\n"
+	if _, err := v.SaveSource("Війна", src); err != nil {
+		t.Fatal(err)
+	}
+	if view, _ := v.Get("Війна"); view.Banner == "" {
+		t.Error("banner lost on save")
+	}
+}
+
+func TestPeriods(t *testing.T) {
+	v := openFixture(t)
+	types := v.Types()
+	for i := range types {
+		if types[i].Key == "character" {
+			// Pair by label, as the editor does for a field it just added.
+			types[i].Fields[0].End = "Смерть"
+		}
+		if types[i].Key == "location" {
+			types[i].Fields = append(types[i].Fields, FieldDef{Label: "Зруйновано", Type: "date"})
+			types[i].Fields[0].End = "Зруйновано"
+		}
+	}
+	saved, err := v.SaveTypes(types)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, ti := range saved {
+		if ti.Key == "character" && ti.Fields[0].End != "died" {
+			t.Errorf("character pairing = %q", ti.Fields[0].End)
+		}
+		if ti.Key == "location" && ti.Fields[0].End != "зруйновано" {
+			t.Errorf("location pairing = %q", ti.Fields[0].End)
+		}
+	}
+
+	byTitle := map[string]TimelineEntry{}
+	for _, y := range v.Timeline() {
+		for _, e := range y.Entries {
+			byTitle[e.Title+"/"+e.Field] = e
+		}
+	}
+	// Born 312, died 389: one period, and the death still has its own dot.
+	if e := byTitle["Аедрін Сірий/Народження"]; e.EndYear != 389 || e.EndField != "Смерть" || e.EndDate != "389 ЕП" || e.OpenEnd {
+		t.Errorf("born → died = %+v", e)
+	}
+	if _, ok := byTitle["Аедрін Сірий/Смерть"]; !ok {
+		t.Error("end of a period lost its own dot")
+	}
+	// Founded, never destroyed: the period stays open.
+	if e := byTitle["Вальмор/Засновано"]; !e.OpenEnd || e.EndField != "Зруйновано" {
+		t.Errorf("open period = %+v", e)
+	}
+	// A pairing to a non-date field is dropped.
+	types = v.Types()
+	for i := range types {
+		if types[i].Key == "character" {
+			types[i].Fields[0].End = "Приналежність"
+		}
+	}
+	saved, _ = v.SaveTypes(types)
+	for _, ti := range saved {
+		if ti.Key == "character" && ti.Fields[0].End != "" {
+			t.Errorf("pairing to a text field kept: %q", ti.Fields[0].End)
+		}
 	}
 }

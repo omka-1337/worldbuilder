@@ -10,7 +10,9 @@ export interface World {
 export interface FieldDef {
   key: string // empty until saved; then fixed, so renaming keeps articles working
   label: string
-  type?: string // "date" or empty for text
+  type?: string // "date", "section" (a heading in the infobox) or empty for text
+  end?: string // on a date field: the date field closing the period it opens
+  _id?: string // editor-only handle, so a new field can be paired before it has a key
 }
 
 export interface TypeDef {
@@ -68,7 +70,9 @@ export interface PageView {
   redirectedFrom?: string
   aliases: string[]
   categories: string[]
-  infobox: { label: string; html: string }[]
+  infobox: { label: string; html: string; section?: boolean }[]
+  banner?: string // URL of a wide picture across the top
+  bannerY?: number // 0..1, the part of it kept in view
   image?: string
   caption?: string
   html: string
@@ -110,13 +114,21 @@ export interface TimelineEntry {
   type?: string
   typeLabel?: string
   field: string
+  date: string // as the author wrote it
+  epoch?: number // years restart with each epoch
   year: number
+  day?: number
+  endEpoch?: number
   endYear?: number
+  endField?: string // a period's closing field (born → died)
+  endDate?: string
+  openEnd?: boolean // a period whose end is not filled in
   text: number
   event: boolean
 }
 
 export interface TimelineYear {
+  epoch?: number
   year: number
   main: TimelineEntry
   entries: TimelineEntry[]

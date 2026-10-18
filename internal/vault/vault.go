@@ -288,6 +288,8 @@ type View struct {
 	Aliases        []string  `json:"aliases"`
 	Categories     []string  `json:"categories"`
 	Infobox        []Row     `json:"infobox"`
+	Banner         string    `json:"banner,omitempty"` // URL of a wide picture across the top
+	BannerY        float64   `json:"bannerY,omitempty"`
 	Image          string    `json:"image,omitempty"`   // rendered HTML
 	Caption        string    `json:"caption,omitempty"` // rendered HTML
 	HTML           string    `json:"html"`
@@ -298,8 +300,9 @@ type View struct {
 
 // Row is one rendered infobox row.
 type Row struct {
-	Label string `json:"label"`
-	HTML  string `json:"html"`
+	Label   string `json:"label"`
+	HTML    string `json:"html"`
+	Section bool   `json:"section,omitempty"` // a heading row grouping the rows below it
 }
 
 // Get renders the page with the given title or alias.
@@ -344,10 +347,22 @@ func (v *Vault) Get(title string) (*View, error) {
 		view.Image = v.renderInline(img)
 		view.Caption = v.renderInline(values[CaptionKey])
 	}
+	if p.Banner != "" {
+		view.Banner, view.BannerY = v.imageURL(p.Banner), p.BannerY
+	}
 	used := map[string]bool{ImageKey: true, CaptionKey: true}
-	for _, fd := range def.Fields {
+	var section *FieldDef // shown only once a field under it has a value
+	for i, fd := range def.Fields {
 		used[fd.Key] = true
+		if fd.Type == "section" {
+			section = &def.Fields[i]
+			continue
+		}
 		if val := values[fd.Key]; val != "" {
+			if section != nil {
+				view.Infobox = append(view.Infobox, Row{Label: section.Label, Section: true})
+				section = nil
+			}
 			view.Infobox = append(view.Infobox, Row{Label: fd.Label, HTML: v.renderInline(val)})
 		}
 	}

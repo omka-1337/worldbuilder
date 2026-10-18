@@ -173,6 +173,7 @@ main.standalone {
 .prose {
   overflow-wrap: break-word;
 }
+.prose h1,
 .prose h2 {
   overflow: hidden; /* stops the underline at a floated infobox */
   font-size: 1.45rem;
@@ -288,4 +289,58 @@ main.standalone {
 }
 .link-complete li.create {
   color: var(--link-new);
+}
+
+/* Obsidian callouts ([!note], [!warning] …), see internal/vault/callout.go. */
+.prose .callout {
+  --c: #3b82c4;
+  overflow: hidden; /* stays beside a floated infobox instead of under it */
+  margin: 1rem 0;
+  padding: 0.6rem 1rem 0.7rem;
+  border-left: 4px solid var(--c);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--c) 9%, var(--bg));
+  color: var(--text);
+}
+.prose .callout > :last-child {
+  margin-bottom: 0;
+}
+.prose .callout-title {
+  margin: 0 0 0.3rem;
+  font-weight: 650;
+  color: var(--c);
+}
+.prose .callout-warning,
+.prose .callout-caution,
+.prose .callout-attention { --c: #e08a1e; }
+.prose .callout-danger,
+.prose .callout-error,
+.prose .callout-bug,
+.prose .callout-failure { --c: #d9534f; }
+.prose .callout-question,
+.prose .callout-faq,
+.prose .callout-help { --c: #c9a227; }
+.prose .callout-tip,
+.prose .callout-hint,
+.prose .callout-success,
+.prose .callout-check,
+.prose .callout-done { --c: #3f9b5c; }
+.prose .callout-example { --c: #8e5bd4; }
+.prose .callout-quote,
+.prose .callout-cite { --c: #7a6f62; }
+
+/* Image embeds with Obsidian display options: ![[x.png|left]]. */
+.prose img.align-left {
+  float: left;
+  max-width: 45%;
+  margin: 0.3rem 1.2rem 0.8rem 0;
+}
+.prose img.align-right {
+  float: right;
+  max-width: 45%;
+  margin: 0.3rem 0 0.8rem 1.2rem;
+}
+.prose img.align-center {
+  display: block;
+  margin: 1rem auto;
 }

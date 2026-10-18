@@ -38,8 +38,12 @@
 
   // Wiki-style section numbers: 1, 1.1, 1.2, 2 …
   const toc = $derived.by(() => {
-    const heads = view?.headings.filter((h) => h.level >= 2 && h.level <= 4) ?? []
-    const top = Math.min(...heads.map((h) => h.level))
+    // Sections usually start at ## (the title is the page's own heading),
+    // but notes from other tools often use # for them: start at whatever the
+    // article's top level is and go three levels deep.
+    const all = view?.headings ?? []
+    const top = Math.min(...all.map((h) => h.level))
+    const heads = all.filter((h) => h.level <= top + 2)
     const counters: number[] = []
     return heads.map((h) => {
       const depth = h.level - top
@@ -68,6 +72,9 @@
   {/if}
   <p><a class="button primary" href={editHref(title)}>Створити статтю</a></p>
 {:else if view}
+  {#if view.banner}
+    <div class="banner" style:background-image="url('{view.banner}')" style:background-position-y="{(view.bannerY ?? 0.5) * 100}%"></div>
+  {/if}
   <div class="article" class:has-toc={toc.length > 1}>
     <article>
       <header>
@@ -104,12 +111,16 @@
             </figure>
           {/if}
           {#if view.typeLabel}<div class="ib-type">{view.typeLabel}</div>{/if}
-          <dl>
-            {#each view.infobox as row (row.label)}
-              <dt>{row.label}</dt>
-              <dd>{@html row.html}</dd>
+          {#if view.infobox.length}<dl>
+            {#each view.infobox as row, i (i)}
+              {#if row.section}
+                <dt class="ib-section">{row.label}</dt>
+              {:else}
+                <dt>{row.label}</dt>
+                <dd>{@html row.html}</dd>
+              {/if}
             {/each}
-          </dl>
+          </dl>{/if}
         </aside>
       {/if}
 
@@ -283,6 +294,24 @@
   }
   dt {
     font-weight: 600;
+  }
+  .ib-section {
+    grid-column: 1 / -1;
+    margin: 0.4rem -0.8rem 0;
+    padding: 0.3rem 0.8rem;
+    background: var(--accent-soft);
+    text-align: center;
+    font-size: 0.85rem;
+  }
+  .ib-section:first-child {
+    margin-top: -0.4rem;
+  }
+  .banner {
+    height: clamp(9rem, 22vh, 15rem);
+    max-width: calc(52rem + 3rem + 14rem);
+    margin-bottom: 1.25rem;
+    border-radius: 10px;
+    background-size: cover;
   }
   dd {
     margin: 0;

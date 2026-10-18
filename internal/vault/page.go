@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"path"
+	"strconv"
 	"strings"
 	"time"
 	"unicode"
@@ -20,6 +21,8 @@ type Page struct {
 	Aliases    []string
 	Categories []string
 	Infobox    []Field // in file order
+	Banner     string  // image embed shown across the top of the article
+	BannerY    float64 // 0..1, which part of the banner stays visible
 	Raw        []byte  // the whole file, frontmatter included
 	Body       []byte  // Markdown after the frontmatter
 	ModTime    time.Time
@@ -42,6 +45,8 @@ type frontmatter struct {
 	Aliases    any           `yaml:"aliases"`
 	Categories any           `yaml:"categories"`
 	Infobox    yaml.MapSlice `yaml:"infobox"`
+	Banner     string        `yaml:"banner"`   // Obsidian Banners plugin: ![[wide.png]]
+	BannerY    any           `yaml:"banner_y"` // its vertical focus, 0 (top) to 1
 }
 
 // ParseError reports a malformed frontmatter block.
@@ -76,6 +81,11 @@ func parsePage(rel string, raw []byte) (*Page, error) {
 		p.Title = strings.TrimSuffix(path.Base(rel), path.Ext(rel))
 	}
 	p.textLen = utf8.RuneCount(bytes.TrimSpace(body))
+	p.Banner = strings.TrimSpace(fm.Banner)
+	p.BannerY = 0.5
+	if y, err := strconv.ParseFloat(strings.TrimSpace(fmt.Sprint(fm.BannerY)), 64); err == nil && y >= 0 && y <= 1 {
+		p.BannerY = y
+	}
 	for _, item := range fm.Infobox {
 		p.Infobox = append(p.Infobox, Field{
 			Key:   fmt.Sprint(item.Key),

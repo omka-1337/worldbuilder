@@ -110,6 +110,7 @@ type fieldOut struct {
 	Key   string `yaml:"key"`
 	Label string `yaml:"label"`
 	Type  string `yaml:"type,omitempty"`
+	End   string `yaml:"end,omitempty"`
 }
 
 func normalizeTypes(in []TypeInfo) (map[string]typeOut, []string, error) {
@@ -163,11 +164,12 @@ func normalizeTypes(in []TypeInfo) (map[string]typeOut, []string, error) {
 				fieldKeys[fkey] = true
 			}
 			kind := ""
-			if f.Type == "date" {
-				kind = "date"
+			if f.Type == "date" || f.Type == "section" {
+				kind = f.Type
 			}
-			out.Fields = append(out.Fields, fieldOut{Key: fkey, Label: flabel, Type: kind})
+			out.Fields = append(out.Fields, fieldOut{Key: fkey, Label: flabel, Type: kind, End: strings.TrimSpace(f.End)})
 		}
+		resolvePeriods(out.Fields)
 		types[key] = out
 		order = append(order, key)
 	}
@@ -175,6 +177,28 @@ func normalizeTypes(in []TypeInfo) (map[string]typeOut, []string, error) {
 }
 
 var colorRe = regexp.MustCompile(`^#[0-9a-f]{6}$`)
+
+// resolvePeriods turns each date field's End into the key of another date
+// field of the same type. The editor refers to fields that have no key yet by
+// their label, so both are accepted; anything else drops the pairing.
+func resolvePeriods(fields []fieldOut) {
+	for i := range fields {
+		f := &fields[i]
+		if f.End == "" {
+			continue
+		}
+		target := ""
+		if f.Type == "date" {
+			for j, g := range fields {
+				if j != i && g.Type == "date" && (g.Key == f.End || strings.EqualFold(g.Label, f.End)) {
+					target = g.Key
+					break
+				}
+			}
+		}
+		f.End = target
+	}
+}
 
 // validKey accepts what slug produces: letters, digits and dashes.
 func validKey(k string) bool {

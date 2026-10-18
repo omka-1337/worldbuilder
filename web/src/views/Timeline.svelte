@@ -1,13 +1,13 @@
 <script lang="ts">
   import { onMount, untrack } from 'svelte'
   import Icon from '../components/Icon.svelte'
-  import { api, pageHref, worldHref, type TimelineEntry, type TimelineYear } from '../lib/api'
+  import { api, currentWorld, pageHref, worldHref, type TimelineEntry, type TimelineYear } from '../lib/api'
   import { navigate, router } from '../lib/router.svelte'
   import { store } from '../lib/store.svelte'
   import { plural } from '../lib/format'
   import { typeColor } from '../lib/colors'
 
-  let years = $state<TimelineYear[] | null>(null)
+  let all = $state<TimelineYear[] | null>(null)
   let width = $state(0) // of the stage, which narrows when the panel opens
   let stage = $state<HTMLDivElement>()
 
@@ -20,6 +20,59 @@
   const FOCUS = 0.5 // a selected year settles in the middle of the visible stage
 
   const era = $derived(store.world?.era ? ' ' + store.world.era : '')
+
+  // Years restart with each epoch, so each epoch gets its own axis; tabs
+  // switch between them when the world has more than one.
+  const epochs = $derived([...new Set((all ?? []).map((y) => y.epoch ?? 0))].sort((a, b) => a - b))
+  const epoch = $derived(router.query.has('epoch') ? Number(router.query.get('epoch')) : (epochs.at(-1) ?? 0))
+  const epochYears = $derived(all ? all.filter((y) => (y.epoch ?? 0) === epoch) : null)
+
+  // Filters, remembered per world in this browser: types hidden altogether,
+  // and types whose bars are hidden while their dots stay.
+  const filterKey = `worldbuilder:timeline:${currentWorld()}`
+  const filters = $state<{ hidden: string[]; noBars: string[] }>(loadFilters())
+  function loadFilters() {
+    try {
+      return { hidden: [], noBars: [], ...JSON.parse(localStorage.getItem(filterKey) ?? '{}') }
+    } catch {
+      return { hidden: [], noBars: [] }
+    }
+  }
+  $effect(() => {
+    try {
+      localStorage.setItem(filterKey, JSON.stringify(filters))
+    } catch {
+      // Storage unavailable: filters last for this visit.
+    }
+  })
+  const toggle = (list: string[], type: string) => {
+    const i = list.indexOf(type)
+    if (i >= 0) list.splice(i, 1)
+    else list.push(type)
+  }
+
+  // The years shown: hidden types drop out, and a year's name goes to its
+  // most important entry still visible.
+  const years = $derived.by(() => {
+    if (!epochYears) return null
+    const out: TimelineYear[] = []
+    for (const y of epochYears) {
+      const entries = y.entries.filter((e) => !filters.hidden.includes(e.type ?? ''))
+      if (entries.length) out.push({ ...y, entries, main: entries[0] })
+    }
+    return out
+  })
+
+  const ROMAN: [number, string][] = [[100, 'C'], [90, 'XC'], [50, 'L'], [40, 'XL'], [10, 'X'], [9, 'IX'], [5, 'V'], [4, 'IV'], [1, 'I']]
+  function roman(n: number) {
+    let out = ''
+    for (const [v, s] of ROMAN) while (n >= v) (out += s), (n -= v)
+    return out
+  }
+  const epochName = (e: number) => (e ? roman(e) : '')
+  // "139 III Епохи", or "343 ЕП" in a world without epochs.
+  const yearLabel = (year: number) => `${year}${epoch ? ' ' + epochName(epoch) : ''}${era}`
+
   const selectedYear = $derived(router.query.has('year') ? Number(router.query.get('year')) : null)
   const selected = $derived(years?.find((y) => y.year === selectedYear) ?? null)
   const selectedIndex = $derived(years && selected ? years.indexOf(selected) : -1)
@@ -27,15 +80,22 @@
   document.title = `Таймлайн — ${store.world?.name}`
 
   onMount(async () => {
-    years = await api.timeline()
-    ;[from, to] = fullRange()
+    all = await api.timeline()
+  })
+
+  // A fresh axis for each epoch shown.
+  let shownEpoch: number | null = null
+  $effect(() => {
+    if (!years || epoch === shownEpoch) return
+    shownEpoch = epoch
+    untrack(() => ([from, to] = fullRange()))
   })
 
   function fullRange(): [number, number] {
     if (!years?.length) return [0, 1]
     const first = years[0].year
     // Ranges can end after the last year that starts anything.
-    const last = Math.max(...years.flatMap((y) => y.entries.map((e) => e.endYear ?? y.year)))
+    const last = Math.max(...years.flatMap((y) => y.entries.map((e) => (sameEpochEnd(e) ? e.endYear! : y.year))))
     const margin = Math.max((last - first) * 0.04, 5)
     return [first - margin, last + margin]
   }
@@ -53,7 +113,14 @@
   const radius = (y: TimelineYear) => Math.min(28, 6 + 5 * Math.sqrt(y.entries.length - 1))
 
   const name = (e: TimelineEntry) => (e.event ? e.title : `${e.title} (${e.field.toLowerCase()})`)
-  const range = (e: TimelineEntry) => `${e.year}${e.endYear ? '–' + e.endYear : ''}${era}`
+  // A range ending in a later epoch runs off the end of this epoch's axis.
+  const sameEpochEnd = (e: TimelineEntry) => !!e.endYear && (e.endEpoch ?? e.epoch ?? 0) === (e.epoch ?? 0)
+  // An open period (no death date yet) runs on to the end of the axis.
+  const spanEnd = (e: TimelineEntry) =>
+    sameEpochEnd(e) ? e.endYear! : e.endYear || e.openEnd ? Infinity : e.year
+  const isBar = (e: TimelineEntry) => (!!e.endYear || !!e.openEnd) && spanEnd(e) > e.year
+  const fullDate = (e: TimelineEntry) =>
+    e.endField ? `${e.date} — ${e.endDate || 'досі'}` : e.date
 
   const labelHalf = (y: TimelineYear) => Math.min(170, Math.max(name(y.main).length, 8) * 7.4) / 2 + 8
 
@@ -100,28 +167,38 @@
 
   const spans = $derived.by(() => {
     if (!years) return []
-    const all = years.flatMap((y) => y.entries.filter((e) => e.endYear))
-    all.sort((a, b) => a.year - b.year || b.endYear! - a.endYear!)
+    // A range within a single year (144.087 — 144.125) is just its dot.
+    const ranges = years.flatMap((y) => y.entries.filter((e) => isBar(e) && !filters.noBars.includes(e.type ?? '')))
+    ranges.sort((a, b) => a.year - b.year || spanEnd(b) - spanEnd(a))
     const laneEnds: number[] = []
-    return all.map((e) => {
+    return ranges.map((e) => {
       let lane = laneEnds.findIndex((end) => end < e.year)
       if (lane < 0) lane = laneEnds.push(0) - 1
-      laneEnds[lane] = e.endYear!
-      return { ...e, lane }
+      laneEnds[lane] = spanEnd(e)
+      return { ...e, lane, end: spanEnd(e) }
     })
   })
 
   // Ranges still going on in the selected year, started earlier.
   const ongoing = $derived(
-    selected ? spans.filter((s) => s.year < selected.year && s.endYear! >= selected.year) : [],
+    selected ? spans.filter((s) => s.year < selected.year && s.end >= selected.year) : [],
   )
 
   // Which color means which type, for the types that are on the timeline.
+  // Every type in this epoch, hidden ones included so they can come back.
   const legend = $derived.by(() => {
-    const seen = new Map<string, string>()
-    for (const y of years ?? []) for (const e of y.entries) if (e.type && !seen.has(e.type)) seen.set(e.type, e.typeLabel ?? e.type)
-    return [...seen].map(([type, label]) => ({ label, color: typeColor(type) }))
+    const seen = new Map<string, { label: string; bars: boolean }>()
+    for (const y of epochYears ?? [])
+      for (const e of y.entries) {
+        if (!e.type) continue
+        const t = seen.get(e.type) ?? { label: e.typeLabel ?? e.type, bars: false }
+        t.bars ||= isBar(e)
+        seen.set(e.type, t)
+      }
+    return [...seen].map(([type, t]) => ({ type, ...t, color: typeColor(type) }))
   })
+  const barTypes = $derived(legend.filter((l) => l.bars))
+  let barsMenu = $state(false)
 
   // Axis ticks at a round step: 1, 2 or 5 × 10ⁿ years, about 110px apart.
   const ticks = $derived.by(() => {
@@ -136,9 +213,11 @@
 
   // --- selection --------------------------------------------------------
 
-  function select(year: number | null) {
-    const href = worldHref(undefined, '/timeline' + (year === null ? '' : `?year=${year}`))
-    navigate(href, { replace: true })
+  function select(year: number | null, inEpoch = epoch) {
+    const q = new URLSearchParams()
+    if (epochs.length > 1 || inEpoch) q.set('epoch', String(inEpoch))
+    if (year !== null) q.set('year', String(year))
+    navigate(worldHref(undefined, '/timeline' + (q.size ? '?' + q : '')), { replace: true })
   }
 
   // Zoom in on a newly selected year (also when opened from a ?year= link).
@@ -179,7 +258,8 @@
 
   function onKeydown(e: KeyboardEvent) {
     if (!years?.length || (e.target as Element).closest('input, textarea')) return
-    if (e.key === 'Escape') select(null)
+    if (e.key === 'Escape' && barsMenu) barsMenu = false
+    else if (e.key === 'Escape') select(null)
     else if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
       const i = selectedIndex < 0 ? 0 : selectedIndex + (e.key === 'ArrowRight' ? 1 : -1)
       if (years[i]) select(years[i].year)
@@ -225,7 +305,7 @@
   let drag = $state<{ x: number; from: number; to: number; moved: boolean } | null>(null)
 
   function onPointerDown(e: PointerEvent) {
-    if (e.button !== 0 || (e.target as Element).closest('.point, .bar, .span, .legend')) return
+    if (e.button !== 0 || (e.target as Element).closest('.point, .bar, .span, .filters')) return
     cancelAnimationFrame(frame)
     drag = { x: e.clientX, from, to, moved: false }
     stage!.setPointerCapture(e.pointerId)
@@ -251,7 +331,10 @@
   }
 </script>
 
-<svelte:window onkeydown={onKeydown} />
+<svelte:window
+  onkeydown={onKeydown}
+  onclick={(e) => barsMenu && !(e.target as Element).closest('.bars-filter') && (barsMenu = false)}
+/>
 
 <div class="timeline" class:open={!!selected}>
   <div
@@ -267,16 +350,59 @@
   >
     <div class="bar">
       <h1>Таймлайн</h1>
+      {#if epochs.length > 1}
+        <div class="epochs" role="tablist" aria-label="Епохи">
+          {#each epochs as e (e)}
+            <button role="tab" class:on={e === epoch} aria-selected={e === epoch} onclick={() => select(null, e)}>
+              {e ? `${epochName(e)}${era}` : 'Без епохи'}
+            </button>
+          {/each}
+        </div>
+      {/if}
       <span class="muted hint">Колесо або щипок — масштаб, прокрутка вбік чи перетягування — зсув, ← → — сусідні роки</span>
       <button onclick={resetView}>Весь таймлайн</button>
     </div>
     {#if legend.length}
-      <ul class="legend" aria-label="Кольори типів">
-        {#each legend as l (l.label)}<li><span class="swatch" style:background={l.color}></span>{l.label}</li>{/each}
-      </ul>
+      <div class="filters">
+        <ul class="legend" aria-label="Типи на таймлайні">
+          {#each legend as l (l.type)}
+            <li>
+              <button
+                class:off={filters.hidden.includes(l.type)}
+                onclick={() => toggle(filters.hidden, l.type)}
+                aria-pressed={!filters.hidden.includes(l.type)}
+                title={filters.hidden.includes(l.type) ? 'Показати' : 'Сховати'}
+              >
+                <span class="swatch" style:background={l.color}></span>{l.label}
+              </button>
+            </li>
+          {/each}
+        </ul>
+        {#if barTypes.length}
+          <div class="bars-filter">
+            <button class="bars-toggle" onclick={() => (barsMenu = !barsMenu)} aria-expanded={barsMenu}>
+              Смуги{filters.noBars.length ? ` (сховано: ${barTypes.filter((t) => filters.noBars.includes(t.type)).length})` : ''} ▾
+            </button>
+            {#if barsMenu}
+              <div class="bars-menu" role="group" aria-label="Які смуги показувати">
+                {#each barTypes as t (t.type)}
+                  <label>
+                    <input type="checkbox" checked={!filters.noBars.includes(t.type)} onchange={() => toggle(filters.noBars, t.type)} />
+                    <span class="swatch" style:background={t.color}></span>{t.label}
+                  </label>
+                {/each}
+                <div class="bars-all">
+                  <button onclick={() => (filters.noBars = [])}>Усі</button>
+                  <button onclick={() => (filters.noBars = barTypes.map((t) => t.type))}>Жодної</button>
+                </div>
+              </div>
+            {/if}
+          </div>
+        {/if}
+      </div>
     {/if}
 
-    {#if years && !years.length}
+    {#if all && !all.length}
       <div class="empty">
         <p>На таймлайні поки нічого немає.</p>
         <p class="muted">
@@ -301,11 +427,11 @@
           style:--r="{r}px"
           style:--c={typeColor(y.main.type)}
           onclick={() => select(y.year)}
-          aria-label="{y.year}{era}: {name(y.main)}, {plural(y.entries.length, ['подія', 'події', 'подій'])}"
+          aria-label="{yearLabel(y.year)}: {name(y.main)}, {plural(y.entries.length, ['подія', 'події', 'подій'])}"
         >
           <span class="dot"></span>
           <span class="label" class:below={row === 1} style:--shift="{labelShift(y)}px">
-            <span class="year">{y.year}{era}</span>
+            <span class="year">{yearLabel(y.year)}</span>
             <span class="name">{name(y.main)}</span>
           </span>
         </button>
@@ -313,18 +439,18 @@
 
       {#each spans as s (s.title + s.field)}
         {@const x1 = x(s.year)}
-        {@const x2 = x(s.endYear!)}
+        {@const x2 = s.end === Infinity ? width + 40 : x(s.end)}
         {#if x2 > -20 && x1 < width + 20}
           <button
             class="span"
-            class:active={selected && s.year <= selected.year && s.endYear! >= selected.year}
+            class:active={selected && s.year <= selected.year && s.end >= selected.year}
             style:left="{x1}px"
             style:width="{Math.max(x2 - x1, 6)}px"
             style:top="calc(var(--axis) + {SPANS_TOP + s.lane * LANE}px)"
             style:--c={typeColor(s.type)}
             style:--inset="{Math.max(0, -x1)}px"
             onclick={() => select(s.year)}
-            title="{s.title} · {range(s)}"
+            title="{s.title} · {fullDate(s)}"
           >
             <span>{s.title}</span>
           </button>
@@ -338,7 +464,7 @@
       <header>
         <span class="big-dot" style:--r="{radius(selected)}px" style:--c={typeColor(selected.main.type)}></span>
         <div class="heading">
-          <div class="year">{selected.year}{era}</div>
+          <div class="year">{yearLabel(selected.year)}</div>
           <a class="main" href={pageHref(selected.main.title)}>{name(selected.main)}</a>
         </div>
         <button class="icon" onclick={() => select(null)} aria-label="Закрити"><Icon name="close" size={18} /></button>
@@ -359,7 +485,7 @@
           <li class:event={e.event} style:--c={typeColor(e.type)}>
             <a href={pageHref(e.title)}>{e.title}</a>
             <span class="meta muted">
-              {e.typeLabel}{e.event ? '' : ' · ' + e.field.toLowerCase()} · {range(e)}
+              {e.typeLabel}{e.event ? '' : ' · ' + (e.endField ? `${e.field.toLowerCase()} — ${e.endField.toLowerCase()}` : e.field.toLowerCase())} · {fullDate(e)}
             </span>
           </li>
         {/each}
@@ -371,7 +497,7 @@
           {#each ongoing as e (e.title + e.field)}
             <li style:--c={typeColor(e.type)}>
               <a href={pageHref(e.title)}>{e.title}</a>
-              <span class="meta muted">{e.typeLabel} · {range(e)}</span>
+              <span class="meta muted">{e.typeLabel} · {fullDate(e)}</span>
             </li>
           {/each}
         </ul>
@@ -419,8 +545,34 @@
     margin: 0;
     font-size: 1.5rem;
   }
+  .epochs {
+    display: inline-flex;
+    border: 1px solid var(--border);
+    border-radius: 7px;
+    overflow: hidden;
+    align-self: center;
+  }
+  .epochs button {
+    border: none;
+    border-radius: 0;
+    padding: 0.2rem 0.7rem;
+    font-size: 0.85rem;
+    background: var(--bg-raised);
+  }
+  .epochs button + button {
+    border-left: 1px solid var(--border);
+  }
+  .epochs button.on {
+    background: var(--accent-soft);
+    color: var(--accent);
+    font-weight: 600;
+  }
   .hint {
     flex: 1;
+    min-width: 0;
+    white-space: nowrap; /* one line, or it runs into the legend below */
+    overflow: hidden;
+    text-overflow: ellipsis;
     font-size: 0.82rem;
   }
   .empty {
@@ -435,31 +587,94 @@
     font-size: 0.88em;
   }
 
-  .legend {
+  /* Type toggles (the legend) and the bars menu, under the title bar. */
+  .filters {
     position: absolute;
-    top: 4.1rem;
+    top: 4rem;
     left: 1.5rem;
     right: 1.5rem;
-    z-index: 3;
+    z-index: 4;
     display: flex;
     flex-wrap: wrap;
+    align-items: center;
     gap: 0.3rem 1rem;
+    cursor: default;
+    font-size: 0.82rem;
+  }
+  .legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.2rem 0.3rem;
     margin: 0;
     padding: 0;
     list-style: none;
-    font-size: 0.82rem;
-    color: var(--text-muted);
-    cursor: default;
   }
-  .legend li {
+  .legend button {
     display: flex;
     align-items: center;
     gap: 0.35rem;
+    padding: 0.1rem 0.5rem;
+    border: 1px solid transparent;
+    border-radius: 999px;
+    background: none;
+    color: var(--text-muted);
+    font-size: inherit;
   }
-  .legend .swatch {
+  .legend button:hover {
+    border-color: var(--border);
+  }
+  .legend button.off {
+    opacity: 0.45;
+    text-decoration: line-through;
+  }
+  .swatch {
     width: 0.65rem;
     height: 0.65rem;
     border-radius: 50%;
+    flex: none;
+  }
+  .bars-filter {
+    position: relative;
+  }
+  .bars-toggle {
+    padding: 0.1rem 0.6rem;
+    font-size: inherit;
+  }
+  .bars-menu {
+    position: absolute;
+    top: calc(100% + 4px);
+    left: 0;
+    min-width: 13rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+    padding: 0.5rem;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--bg-raised);
+    box-shadow: 0 8px 24px rgb(0 0 0 / 0.14);
+  }
+  .bars-menu label {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.2rem 0.3rem;
+    border-radius: 5px;
+    cursor: pointer;
+  }
+  .bars-menu label:hover {
+    background: var(--bg-hover);
+  }
+  .bars-all {
+    display: flex;
+    gap: 0.3rem;
+    margin-top: 0.3rem;
+    padding-top: 0.4rem;
+    border-top: 1px solid var(--border);
+  }
+  .bars-all button {
+    padding: 0.1rem 0.5rem;
+    font-size: inherit;
   }
 
   .axis {

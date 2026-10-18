@@ -18,7 +18,7 @@ build: web
 
 dev: web/node_modules
 	@trap 'kill 0' EXIT; \
-	go run ./cmd/worldbuilder -no-open $(if $(LIBRARY),-library "$(LIBRARY)") & \
+	go run ./cmd/worldbuilder -no-open -no-tray $(if $(LIBRARY),-library "$(LIBRARY)") & \
 	cd web && npm run dev
 
 test:

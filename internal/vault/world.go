@@ -32,6 +32,10 @@ type FieldDef struct {
 	Key   string `yaml:"key" json:"key"`
 	Label string `yaml:"label" json:"label"`
 	Type  string `yaml:"type" json:"type,omitempty"` // "date" puts the article on the timeline
+	// End, on a date field, names the date field that closes the period it
+	// opens (born → died, founded → dissolved): the timeline draws the two as
+	// one bar.
+	End string `yaml:"end" json:"end,omitempty"`
 }
 
 const worldFile = "world.yaml"
