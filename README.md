@@ -55,6 +55,12 @@ infobox:
 **Aedrin** founded the [[Order of Ash|Order]]. See [[#Legacy]].
 ```
 
+Articles can be grouped by dragging one onto another in the sidebar tree.
+The dropped article moves into a folder named after the parent, next to the
+parent's file (`War.md` + `War/Battle.md`); its own children move with it,
+and renaming the parent renames the folder. Links are by title, so moving
+never breaks them.
+
 `world.yaml` holds the world's name, main page and article types. Types are
 edited on the app's "Article types" page, so users never touch the YAML.
 Each type has a color and lists its infobox fields; a field of kind

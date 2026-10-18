@@ -46,9 +46,23 @@ export interface Heading {
   id: string
 }
 
+export interface TreeNode {
+  name: string
+  title?: string // empty for a folder made outside the app
+  type?: string
+  children?: TreeNode[]
+}
+
+export interface Crumb {
+  name: string
+  title?: string
+}
+
 export interface PageView {
   title: string
   path: string
+  location: Crumb[] // the articles it is nested in, outermost first
+  children: string[] // articles nested directly inside it
   type?: string
   typeLabel?: string
   redirectedFrom?: string
@@ -133,6 +147,7 @@ const enc = encodeURIComponent
 // does not need to be reactive.
 let world = ''
 export const setWorld = (id: string) => (world = id)
+export const currentWorld = () => world
 const w = () => `/api/worlds/${enc(world)}`
 
 async function send<T>(method: string, url: string, body: unknown): Promise<T> {
@@ -154,6 +169,9 @@ export const api = {
   category: (name: string) => get<Summary[]>(`${w()}/categories/${enc(name)}`),
   wanted: () => get<Wanted[]>(`${w()}/wanted`),
   timeline: () => get<TimelineYear[]>(`${w()}/timeline`),
+  tree: () => get<TreeNode[]>(`${w()}/tree`),
+  // Nests an article inside another one, or at the top level with parent "".
+  move: (title: string, parent: string) => send<TreeNode[]>('POST', `${w()}/move`, { title, parent }),
   types: () => get<TypeInfo[]>(`${w()}/types`),
   saveTypes: (types: TypeInfo[]) => send<TypeInfo[]>('PUT', `${w()}/types`, types),
 

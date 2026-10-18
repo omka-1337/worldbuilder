@@ -1,9 +1,12 @@
 <script lang="ts">
+  import { SvelteSet } from 'svelte/reactivity'
   import Icon from './Icon.svelte'
   import SettingsDialog from './SettingsDialog.svelte'
-  import { api, key, pageHref, worldHref, type Hit } from '../lib/api'
+  import PageTree from './PageTree.svelte'
+  import { api, currentWorld, key, pageHref, worldHref, type Hit, type TreeNode } from '../lib/api'
   import { router, navigate, titleFrom } from '../lib/router.svelte'
-  import { store } from '../lib/store.svelte'
+  import { store, refresh } from '../lib/store.svelte'
+  import { drag, endDrag } from '../lib/drag.svelte'
 
   let query = $state('')
   let hits = $state<Hit[]>([])
@@ -39,11 +42,64 @@
     hits = []
   }
 
-  // The article open in the main pane, to highlight it in the list.
+  // The article open in the main pane, to highlight it in the tree. The URL
+  // may use an alias or other casing, so match it to the real title.
   const current = $derived.by(() => {
     const prefix = new URL(worldHref(undefined, '/wiki/'), location.href).pathname
-    return router.path.startsWith(prefix) ? key(titleFrom(router.path.slice(prefix.length))) : ''
+    if (!router.path.startsWith(prefix)) return ''
+    const k = key(titleFrom(router.path.slice(prefix.length)))
+    return store.pages.find((p) => key(p.title) === k || p.aliases.some((a) => key(a) === k))?.title ?? ''
   })
+
+  // Open groups are remembered per world in this browser.
+  const storageKey = `worldbuilder:expanded:${currentWorld()}`
+  const expanded = new SvelteSet<string>(loadExpanded())
+  function loadExpanded(): string[] {
+    try {
+      return JSON.parse(localStorage.getItem(storageKey) ?? '[]')
+    } catch {
+      return []
+    }
+  }
+  $effect(() => {
+    try {
+      localStorage.setItem(storageKey, JSON.stringify([...expanded]))
+    } catch {
+      // Storage unavailable: groups just start closed next time.
+    }
+  })
+
+  // Opening an article reveals it: every group above it unfolds.
+  $effect(() => {
+    if (!current) return
+    const path: string[] = []
+    const find = (nodes: TreeNode[]): boolean =>
+      nodes.some((n) => {
+        if (n.title === current) return true
+        path.push(n.title ?? 'folder:' + n.name)
+        if (n.children && find(n.children)) return true
+        path.pop()
+        return false
+      })
+    if (find(store.tree)) path.forEach((id) => expanded.add(id))
+  })
+
+  let moveError = $state('')
+  async function move(title: string, parent: string) {
+    moveError = ''
+    try {
+      await api.move(title, parent)
+      if (parent) expanded.add(parent)
+      await refresh()
+    } catch (e) {
+      moveError = e instanceof Error && 'status' in e && e.status === 409
+        ? `Там уже є стаття «${title}».`
+        : `Не вдалося перемістити: ${e instanceof Error ? e.message : e}`
+      setTimeout(() => (moveError = ''), 5000)
+    }
+  }
+
+  let overRoot = $state(false)
 </script>
 
 <aside class="sidebar">
@@ -65,14 +121,39 @@
     {/if}
   </form>
 
-  <h2>Статті <span class="muted">{store.pages.length}</span></h2>
-  <ul class="pages">
-    {#each store.pages as page (page.title)}
-      <li>
-        <a href={pageHref(page.title)} class:active={current === key(page.title)}>{page.title}</a>
-      </li>
-    {/each}
-  </ul>
+  <!-- While dragging, the heading turns into the top-level drop zone in
+       place, so nothing under the pointer moves. -->
+  <div class="tree-head">
+    <h2>Статті <span class="muted">{store.pages.length}</span></h2>
+    {#if drag.title}
+      <div
+        class="root-drop"
+        class:over={overRoot}
+        role="presentation"
+        ondragover={(e) => {
+          e.preventDefault()
+          overRoot = true
+        }}
+        ondragleave={() => (overRoot = false)}
+        ondrop={(e) => {
+          e.preventDefault()
+          const title = drag.title
+          overRoot = false
+          endDrag()
+          move(title, '')
+        }}
+      >
+        Сюди — на верхній рівень
+      </div>
+    {/if}
+  </div>
+  <div class="pages" role="tree" aria-label="Статті">
+    {#if moveError}<p class="move-error">{moveError}</p>{/if}
+    <PageTree nodes={store.tree} {current} {expanded} onmove={move} />
+    {#if store.tree.length > 1 && !drag.title}
+      <p class="tip muted">Перетягніть статтю на іншу, щоб вкласти її.</p>
+    {/if}
+  </div>
 
   <footer>
     <a class="world" href={worldHref()} title="Головна сторінка світу">{store.world?.name ?? ''}</a>
@@ -139,29 +220,40 @@
     margin: 0.5rem 0.5rem 0;
   }
   .pages {
-    list-style: none;
-    margin: 0;
-    padding: 0;
     overflow-y: auto;
     flex: 1;
     font-size: 0.93rem;
   }
-  .pages a {
-    display: block;
-    padding: 0.2rem 0.5rem;
-    border-radius: 5px;
-    color: var(--text);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+  .tree-head {
+    position: relative;
+    display: flex;
+    align-items: flex-end;
+    min-height: 2.1rem;
   }
-  .pages a:hover {
-    background: var(--bg-hover);
-    text-decoration: none;
+  .root-drop {
+    position: absolute;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    border: 2px dashed var(--border);
+    border-radius: 6px;
+    background: var(--bg-sidebar);
+    font-size: 0.82rem;
+    color: var(--text-muted);
   }
-  .pages a.active {
+  .root-drop.over {
+    border-color: var(--accent);
     background: var(--accent-soft);
     color: var(--accent);
+  }
+  .move-error {
+    margin: 0 0 0.3rem;
+    font-size: 0.82rem;
+    color: var(--danger);
+  }
+  .tip {
+    margin: 0.8rem 0.4rem;
+    font-size: 0.78rem;
   }
 
   footer {

@@ -434,3 +434,73 @@ func TestSaveSourceCreateAndRename(t *testing.T) {
 		t.Errorf("empty title: %v", err)
 	}
 }
+
+func TestNesting(t *testing.T) {
+	v := openFixture(t)
+	root := v.Root()
+	exists := func(rel string) bool { return fileExists(filepath.Join(root, filepath.FromSlash(rel))) }
+
+	// Drop the battle onto the location, then the location onto the main page:
+	// the battle travels along inside its parent's folder.
+	if err := v.Move("Битва під Тліню", "Вальмор"); err != nil {
+		t.Fatal(err)
+	}
+	if !exists("Вальмор/Битва під Тліню.md") || !exists("Вальмор.md") {
+		t.Fatal("child not moved into the parent's folder")
+	}
+	if err := v.Move("Вальмор", "Головна"); err != nil {
+		t.Fatal(err)
+	}
+	if !exists("Головна/Вальмор.md") || !exists("Головна/Вальмор/Битва під Тліню.md") || exists("Вальмор") {
+		t.Fatal("parent's folder did not move with it")
+	}
+
+	// A page cannot go inside itself or its own descendant.
+	if err := v.Move("Головна", "Битва під Тліню"); !errors.As(err, new(*InvalidError)) {
+		t.Errorf("cycle: %v", err)
+	}
+
+	view, err := v.Get("Битва під Тліню")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(view.Location) != 2 || view.Location[0].Title != "Головна" || view.Location[1].Title != "Вальмор" {
+		t.Errorf("location = %+v", view.Location)
+	}
+	if parent, _ := v.Get("Вальмор"); !slices.Equal(parent.Children, []string{"Битва під Тліню"}) {
+		t.Errorf("children = %v", parent.Children)
+	}
+	// Links resolve by title, so moving a page does not break them.
+	if aedrin, _ := v.Get("Аедрін Сірий"); !slices.Contains(aedrin.Backlinks, "Вальмор") {
+		t.Errorf("link from a moved page lost: %v", aedrin.Backlinks)
+	}
+
+	tree := v.Tree()
+	var main *TreeNode
+	for _, n := range tree {
+		if n.Title == "Головна" {
+			main = n
+		}
+	}
+	if main == nil || len(main.Children) != 1 || main.Children[0].Title != "Вальмор" || main.Children[0].Children[0].Title != "Битва під Тліню" {
+		t.Errorf("tree = %+v", main)
+	}
+
+	// Renaming a parent renames its folder.
+	src := v.Source("Вальмор")
+	src.Title = "Вальмор-на-Попелі"
+	if _, err := v.SaveSource("Вальмор", src); err != nil {
+		t.Fatal(err)
+	}
+	if !exists("Головна/Вальмор-на-Попелі/Битва під Тліню.md") || exists("Головна/Вальмор") {
+		t.Error("folder not renamed with its article")
+	}
+
+	// Back to the top level; emptied folders disappear.
+	if err := v.Move("Вальмор-на-Попелі", ""); err != nil {
+		t.Fatal(err)
+	}
+	if !exists("Вальмор-на-Попелі/Битва під Тліню.md") || exists("Головна") {
+		t.Error("move to top level or pruning failed")
+	}
+}

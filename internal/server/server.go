@@ -37,6 +37,8 @@ func New(lib *library.Library, ui fs.FS) http.Handler {
 	mux.HandleFunc("GET "+w+"/categories/{name...}", s.inWorld(s.category))
 	mux.HandleFunc("GET "+w+"/wanted", s.inWorld(s.wanted))
 	mux.HandleFunc("GET "+w+"/timeline", s.inWorld(s.timeline))
+	mux.HandleFunc("GET "+w+"/tree", s.inWorld(s.tree))
+	mux.HandleFunc("POST "+w+"/move", s.inWorld(s.move))
 	mux.HandleFunc("GET "+w+"/types", s.inWorld(s.types))
 	mux.HandleFunc("PUT "+w+"/types", s.inWorld(s.saveTypes))
 	mux.HandleFunc("GET /w/{world}/files/{path...}", s.inWorld(s.file))
@@ -144,6 +146,26 @@ func (s *server) wanted(w http.ResponseWriter, r *http.Request, v *vault.Vault) 
 
 func (s *server) timeline(w http.ResponseWriter, r *http.Request, v *vault.Vault) {
 	writeJSON(w, v.Timeline())
+}
+
+func (s *server) tree(w http.ResponseWriter, r *http.Request, v *vault.Vault) {
+	writeJSON(w, v.Tree())
+}
+
+func (s *server) move(w http.ResponseWriter, r *http.Request, v *vault.Vault) {
+	var req struct {
+		Title  string `json:"title"`
+		Parent string `json:"parent"` // empty: the top level
+	}
+	if err := json.NewDecoder(io.LimitReader(r.Body, 1<<16)).Decode(&req); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if err := v.Move(req.Title, req.Parent); err != nil {
+		writeError(w, err)
+		return
+	}
+	writeJSON(w, v.Tree())
 }
 
 func (s *server) types(w http.ResponseWriter, r *http.Request, v *vault.Vault) {

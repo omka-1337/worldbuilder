@@ -75,9 +75,32 @@ func (v *Vault) Root() string { return v.root }
 // Reload rescans the whole vault from disk. A file with broken frontmatter
 // is logged and skipped rather than failing the whole load.
 func (v *Vault) Reload() error {
-	world, err := LoadWorld(v.root)
+	world, idx, err := v.scan()
 	if err != nil {
 		return err
+	}
+	v.mu.Lock()
+	v.world, v.idx = world, idx
+	v.mu.Unlock()
+	return nil
+}
+
+// rescanLocked is Reload for callers already holding v.mu, after changes
+// that move many files at once (moving or renaming a page with children).
+func (v *Vault) rescanLocked() error {
+	world, idx, err := v.scan()
+	if err != nil {
+		return err
+	}
+	v.world, v.idx = world, idx
+	return nil
+}
+
+// scan reads world.yaml and every article from disk into a fresh index.
+func (v *Vault) scan() (World, *index, error) {
+	world, err := LoadWorld(v.root)
+	if err != nil {
+		return world, nil, err
 	}
 	idx := &index{pages: map[string]*Page{}, files: map[string]string{}}
 	err = filepath.WalkDir(v.root, func(p string, d fs.DirEntry, err error) error {
@@ -108,14 +131,10 @@ func (v *Vault) Reload() error {
 		return nil
 	})
 	if err != nil {
-		return err
+		return world, nil, err
 	}
 	v.link(idx)
-
-	v.mu.Lock()
-	v.world, v.idx = world, idx
-	v.mu.Unlock()
-	return nil
+	return world, idx, nil
 }
 
 func (v *Vault) readPage(rel string) (*Page, error) {
@@ -264,6 +283,8 @@ type View struct {
 	Type           string    `json:"type,omitempty"`
 	TypeLabel      string    `json:"typeLabel,omitempty"`
 	RedirectedFrom string    `json:"redirectedFrom,omitempty"`
+	Location       []Crumb   `json:"location"` // the articles it is nested in, outermost first
+	Children       []string  `json:"children"` // articles nested directly inside it
 	Aliases        []string  `json:"aliases"`
 	Categories     []string  `json:"categories"`
 	Infobox        []Row     `json:"infobox"`
@@ -308,6 +329,7 @@ func (v *Vault) Get(title string) (*View, error) {
 	if Key(p.Title) != Key(title) {
 		view.RedirectedFrom = title
 	}
+	view.Location, view.Children = v.location(p, v.collator())
 
 	// Infobox rows follow the order declared by the type, then any extra
 	// fields in file order, labelled by their key.

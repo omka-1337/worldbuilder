@@ -10,6 +10,7 @@
   let error = $state('')
 
   $effect(() => {
+    void store.version // reload after moves and renames elsewhere
     load(title)
   })
 
@@ -70,6 +71,14 @@
   <div class="article" class:has-toc={toc.length > 1}>
     <article>
       <header>
+        {#if view.location.length}
+          <nav class="crumbs" aria-label="Розташування">
+            {#each view.location as c, i (i)}
+              {#if c.title}<a href={pageHref(c.title)}>{c.name}</a>{:else}<span>{c.name}</span>{/if}
+              <span class="sep" aria-hidden="true">›</span>
+            {/each}
+          </nav>
+        {/if}
         <div class="title-row">
           <h1 class="page-title">{view.title}</h1>
           <a href={editHref(view.title)} class="edit">Редагувати</a>
@@ -106,6 +115,15 @@
           <div class="categories">
             <span class="muted">Категорії:</span>
             {#each view.categories as c (c)}<a href={categoryHref(c)}>{c}</a>{/each}
+          </div>
+        {/if}
+
+        {#if view.children.length}
+          <div class="children">
+            <h2>У цьому розділі</h2>
+            <ul>
+              {#each view.children as c (c)}<li><a href={pageHref(c)}>{c}</a></li>{/each}
+            </ul>
           </div>
         {/if}
 
@@ -156,6 +174,28 @@
   }
   .article.has-toc {
     grid-template-columns: minmax(0, 52rem) 14rem;
+  }
+  .crumbs {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+    font-size: 0.85rem;
+    color: var(--text-muted);
+    margin-bottom: 0.2rem;
+  }
+  .crumbs .sep {
+    opacity: 0.6;
+  }
+  .children {
+    margin-bottom: 1rem;
+  }
+  .children h2 {
+    font-size: 0.95rem;
+    margin: 0 0 0.3rem;
+  }
+  .children ul {
+    columns: 2 12rem;
+    margin: 0;
   }
   .title-row {
     display: flex;

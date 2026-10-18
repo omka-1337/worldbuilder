@@ -141,7 +141,30 @@ func (v *Vault) SaveSource(title string, src Source) (string, error) {
 		out.WriteString("---\n")
 	}
 	out.WriteString(strings.TrimLeft(src.Body, "\n"))
-	return v.writePage(rel, old, out.Bytes())
+	// Both the old and the new name have a folder of children: they would
+	// collide. A folder only under the new name is simply adopted.
+	if old != "" {
+		from := filepath.Join(v.root, filepath.FromSlash(stem(old)))
+		to := filepath.Join(v.root, filepath.FromSlash(stem(rel)))
+		if isDir(from) && isDir(to) && !sameFile(from, to) {
+			return "", ErrExists
+		}
+	}
+	saved, err := v.writePage(rel, old, out.Bytes())
+	if err != nil || old == "" {
+		return saved, err
+	}
+	// A renamed parent takes its children's folder along.
+	moved, err := v.renameFolder(old, rel)
+	if err != nil {
+		return "", err
+	}
+	if moved {
+		if err := v.rescanLocked(); err != nil {
+			return "", err
+		}
+	}
+	return saved, nil
 }
 
 // setOrDelete sets key to value, or removes it when value is empty.
