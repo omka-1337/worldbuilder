@@ -18,6 +18,24 @@ type World struct {
 	Era         string             `yaml:"era" json:"era,omitempty"` // shown after years, e.g. "ЕП"
 	Language    string             `yaml:"language" json:"language"`
 	Types       map[string]TypeDef `yaml:"types" json:"types"`
+	Calendar    Calendar           `yaml:"calendar" json:"calendar"`
+}
+
+// Calendar describes how time is counted in a world. Everything is
+// optional: a world that sets nothing counts plain years.
+type Calendar struct {
+	// YearParts is how many parts a year has: the number after the dot in
+	// "139.096". PartName is what one is called, if the author has decided.
+	YearParts int    `yaml:"yearParts,omitempty" json:"yearParts,omitempty"`
+	PartName  string `yaml:"partName,omitempty" json:"partName,omitempty"`
+	// Epochs in order, the first being epoch I. Years restart with each; a
+	// known length lets the timeline lay epochs end to end on one axis.
+	Epochs []EpochDef `yaml:"epochs,omitempty" json:"epochs"`
+}
+
+type EpochDef struct {
+	Name  string `yaml:"name,omitempty" json:"name,omitempty"`
+	Years int    `yaml:"years,omitempty" json:"years,omitempty"` // 0: not known
 }
 
 // TypeDef describes an article type and the infobox fields it offers.
@@ -66,6 +84,9 @@ func LoadWorld(root string) (World, error) {
 	}
 	if w.Types == nil {
 		w.Types = map[string]TypeDef{}
+	}
+	if w.Calendar.Epochs == nil {
+		w.Calendar.Epochs = []EpochDef{}
 	}
 	return w, nil
 }

@@ -725,3 +725,41 @@ func TestPeriods(t *testing.T) {
 		}
 	}
 }
+
+func TestCalendar(t *testing.T) {
+	files := map[string]string{}
+	for k, v := range fixture {
+		files[k] = v
+	}
+	files["world.yaml"] += "custom: kept\n"
+	v, err := Open(writeWorld(t, files), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c := v.World().Calendar; c.YearParts != 0 || len(c.Epochs) != 0 {
+		t.Fatalf("a world without a calendar has %+v", c)
+	}
+	w, err := v.SaveCalendar(Calendar{YearParts: 100, Epochs: []EpochDef{{Name: " Ранній час ", Years: 400}, {}, {Name: "Нова ера"}}}, " Епохи ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := w.Calendar
+	if c.YearParts != 100 || len(c.Epochs) != 3 || c.Epochs[0] != (EpochDef{"Ранній час", 400}) || c.Epochs[2].Name != "Нова ера" || w.Era != "Епохи" {
+		t.Errorf("calendar after save = %+v, era %q", c, w.Era)
+	}
+	raw, _ := os.ReadFile(filepath.Join(v.Root(), "world.yaml"))
+	if !strings.Contains(string(raw), "custom: kept") || !strings.Contains(string(raw), "type: date") {
+		t.Errorf("other settings lost:\n%s", raw)
+	}
+	if _, err := v.SaveCalendar(Calendar{YearParts: -1}, ""); !errors.As(err, new(*InvalidError)) {
+		t.Errorf("negative parts: %v", err)
+	}
+	// Clearing everything removes the section.
+	if _, err := v.SaveCalendar(Calendar{}, ""); err != nil {
+		t.Fatal(err)
+	}
+	raw, _ = os.ReadFile(filepath.Join(v.Root(), "world.yaml"))
+	if strings.Contains(string(raw), "calendar") || strings.Contains(string(raw), "era:") {
+		t.Errorf("empty calendar left in world.yaml:\n%s", raw)
+	}
+}

@@ -2,8 +2,9 @@ export interface World {
   name: string
   description?: string
   mainPage: string
-  era?: string
+  era?: string // written after epoch numerals: "III Епохи"
   language: string
+  calendar: Calendar
   types: Record<string, TypeDef>
 }
 
@@ -13,6 +14,13 @@ export interface FieldDef {
   type?: string // "date", "section" (a heading in the infobox) or empty for text
   end?: string // on a date field: the date field closing the period it opens
   _id?: string // editor-only handle, so a new field can be paired before it has a key
+}
+
+// How time is counted in a world; every part is optional.
+export interface Calendar {
+  yearParts?: number // parts in a year: the number after the dot in 139.096
+  partName?: string
+  epochs: { name?: string; years?: number }[] // epoch I first; years 0/absent = unknown
 }
 
 export interface TypeDef {
@@ -117,9 +125,10 @@ export interface TimelineEntry {
   date: string // as the author wrote it
   epoch?: number // years restart with each epoch
   year: number
-  day?: number
+  part?: number
   endEpoch?: number
   endYear?: number
+  endPart?: number
   endField?: string // a period's closing field (born → died)
   endDate?: string
   openEnd?: boolean // a period whose end is not filled in
@@ -192,6 +201,7 @@ export const api = {
   // Nests an article inside another one, or at the top level with parent "".
   move: (title: string, parent: string) => send<TreeNode[]>('POST', `${w()}/move`, { title, parent }),
   types: () => get<TypeInfo[]>(`${w()}/types`),
+  saveCalendar: (calendar: Calendar, era: string) => send<World>('PUT', `${w()}/calendar`, { ...calendar, era }),
   saveTypes: (types: TypeInfo[]) => send<TypeInfo[]>('PUT', `${w()}/types`, types),
 
   source: (title: string) => get<Source>(`${w()}/source/${enc(title)}`),

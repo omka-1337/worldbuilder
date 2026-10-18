@@ -76,7 +76,15 @@ edited on the app's "Article types" page, so users never touch the YAML.
 Each type has a color and lists its infobox fields; a field of kind
 *date* puts the article on the timeline — a single year (`343`) as a dot, a
 range (`340–347`) as a bar below the axis — drawn in the type's color.
-Types marked as events name the years they fall in. Type and field keys are generated once
+Types marked as events name the years they fall in. Two date fields of a
+type can form a period (born → died), drawn as one bar.
+
+The "Calendar" page sets how time is counted: how many parts a year has (the
+number after the dot in `139.096`) and what they are called, and the epochs,
+whose years restart (`12 III Епохи`). When the lengths of all but the last
+epoch are known, the timeline lays them on one axis with their borders;
+otherwise each epoch gets a tab. The latest date in the world counts as the
+present: open periods (no death date yet) run up to it. Type and field keys are generated once
 from their names and never change, so renaming keeps articles working.
 
 ## Code layout

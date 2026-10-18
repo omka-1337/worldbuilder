@@ -6,12 +6,15 @@
   import { store } from '../lib/store.svelte'
   import { plural } from '../lib/format'
   import { typeColor } from '../lib/colors'
+  import { epochName, epochOffsets, presentMoment, yearFraction, yearLabel } from '../lib/calendar'
 
   let all = $state<TimelineYear[] | null>(null)
   let width = $state(0) // of the stage, which narrows when the panel opens
   let stage = $state<HTMLDivElement>()
 
-  // The visible span of years. Zooming and panning change it; selecting a
+  // The visible stretch of the axis. Positions on it are years, plus the
+  // year's fraction for a date with a part (139.096), plus the epoch's start
+  // when epochs share one axis. Zooming and panning change it; selecting a
   // year animates it.
   let from = $state(0)
   let to = $state(1)
@@ -19,13 +22,14 @@
   const PAD = 70 // px kept clear at both ends of the axis
   const FOCUS = 0.5 // a selected year settles in the middle of the visible stage
 
-  const era = $derived(store.world?.era ? ' ' + store.world.era : '')
-
-  // Years restart with each epoch, so each epoch gets its own axis; tabs
-  // switch between them when the world has more than one.
+  // Years restart with each epoch. When the calendar knows how long the
+  // earlier epochs lasted they share one axis; otherwise each epoch gets its
+  // own and tabs switch between them.
   const epochs = $derived([...new Set((all ?? []).map((y) => y.epoch ?? 0))].sort((a, b) => a - b))
+  const offsets = $derived(epochOffsets(store.world, epochs))
+  const shared = $derived(!!offsets)
   const epoch = $derived(router.query.has('epoch') ? Number(router.query.get('epoch')) : (epochs.at(-1) ?? 0))
-  const epochYears = $derived(all ? all.filter((y) => (y.epoch ?? 0) === epoch) : null)
+  const epochYears = $derived(all ? (shared ? all : all.filter((y) => (y.epoch ?? 0) === epoch)) : null)
 
   // Filters, remembered per world in this browser: types hidden altogether,
   // and types whose bars are hidden while their dots stay.
@@ -63,18 +67,47 @@
     return out
   })
 
-  const ROMAN: [number, string][] = [[100, 'C'], [90, 'XC'], [50, 'L'], [40, 'XL'], [10, 'X'], [9, 'IX'], [5, 'V'], [4, 'IV'], [1, 'I']]
-  function roman(n: number) {
-    let out = ''
-    for (const [v, s] of ROMAN) while (n >= v) (out += s), (n -= v)
-    return out
-  }
-  const epochName = (e: number) => (e ? roman(e) : '')
-  // "139 III Епохи", or "343 ЕП" in a world without epochs.
-  const yearLabel = (year: number) => `${year}${epoch ? ' ' + epochName(epoch) : ''}${era}`
+  const keyOf = (y: { epoch?: number; year: number }) => `${y.epoch ?? 0}:${y.year}`
+  const label = (y: { epoch?: number; year: number }) => yearLabel(store.world, y.epoch ?? 0, y.year)
 
-  const selectedYear = $derived(router.query.has('year') ? Number(router.query.get('year')) : null)
-  const selected = $derived(years?.find((y) => y.year === selectedYear) ?? null)
+  // --- positions ----------------------------------------------------------
+
+  // Whether an epoch is drawn on the current axis.
+  const onAxis = (e: number) => shared || e === epoch
+  const posOf = (e: number, year: number, part = 0) =>
+    (offsets?.get(e) ?? 0) + year + yearFraction(store.world, part)
+  const yearPos = (y: TimelineYear) => posOf(y.epoch ?? 0, y.year)
+  const startPos = (e: TimelineEntry) => posOf(e.epoch ?? 0, e.year, e.part)
+
+  // The present is the latest date in the world: open periods (still alive,
+  // still standing) run up to it.
+  const now = $derived(all ? presentMoment(all) : null)
+  const nowPos = $derived(now && onAxis(now.epoch) ? posOf(now.epoch, now.year, now.part) : null)
+
+  // Where an entry's bar ends: its own end, the present for an open period,
+  // or off the end of the axis when that lies in an epoch not shown.
+  function endPos(e: TimelineEntry) {
+    if (e.endYear) {
+      const ep = e.endEpoch ?? e.epoch ?? 0
+      return onAxis(ep) ? posOf(ep, e.endYear, e.endPart) : Infinity
+    }
+    if (e.openEnd) return nowPos ?? Infinity
+    return startPos(e)
+  }
+  // A period inside one year (144.087 — 144.125) is just its dot.
+  function isBar(e: TimelineEntry) {
+    if (e.endYear) return (e.endEpoch ?? e.epoch ?? 0) !== (e.epoch ?? 0) || e.endYear > e.year
+    if (e.openEnd) return !now || now.epoch !== (e.epoch ?? 0) || now.year > e.year
+    return false
+  }
+
+  const name = (e: TimelineEntry) => (e.event ? e.title : `${e.title} (${e.field.toLowerCase()})`)
+  const fullDate = (e: TimelineEntry) => (e.endField ? `${e.date} — ${e.endDate || 'досі'}` : e.date)
+
+  const selectedKey = $derived(
+    router.query.has('year') ? `${router.query.get('epoch') ?? epoch}:${router.query.get('year')}` : null,
+  )
+  const selected = $derived(years?.find((y) => keyOf(y) === selectedKey) ?? null)
   const selectedIndex = $derived(years && selected ? years.indexOf(selected) : -1)
 
   document.title = `Таймлайн — ${store.world?.name}`
@@ -83,50 +116,42 @@
     all = await api.timeline()
   })
 
-  // A fresh axis for each epoch shown.
-  let shownEpoch: number | null = null
+  // A fresh view whenever the axis changes: another epoch, or epochs joined.
+  let shownAxis: string | null = null
   $effect(() => {
-    if (!years || epoch === shownEpoch) return
-    shownEpoch = epoch
+    const axis = shared ? 'shared' : String(epoch)
+    if (!years || axis === shownAxis) return
+    shownAxis = axis
     untrack(() => ([from, to] = fullRange()))
   })
 
   function fullRange(): [number, number] {
     if (!years?.length) return [0, 1]
-    const first = years[0].year
+    const first = Math.min(...years.map(yearPos))
     // Ranges can end after the last year that starts anything.
-    const last = Math.max(...years.flatMap((y) => y.entries.map((e) => (sameEpochEnd(e) ? e.endYear! : y.year))))
+    const ends = years.flatMap((y) => [yearPos(y), ...y.entries.map(endPos).filter(Number.isFinite)])
+    const last = Math.max(...ends)
     const margin = Math.max((last - first) * 0.04, 5)
     return [first - margin, last + margin]
   }
 
-  // A span of the given width that puts `year` at the FOCUS point.
-  function focusRange(year: number, span: number): [number, number] {
+  // A span of the given width that puts position p at the FOCUS point.
+  function focusRange(p: number, span: number): [number, number] {
     const inner = Math.max(width - 2 * PAD, 1)
     const left = ((FOCUS * width - PAD) / inner) * span
-    return [year - left, year - left + span]
+    return [p - left, p - left + span]
   }
 
-  const x = (year: number) => PAD + ((year - from) / (to - from)) * Math.max(width - 2 * PAD, 1)
+  const x = (p: number) => PAD + ((p - from) / (to - from)) * Math.max(width - 2 * PAD, 1)
 
   // More events in a year, bigger dot.
   const radius = (y: TimelineYear) => Math.min(28, 6 + 5 * Math.sqrt(y.entries.length - 1))
-
-  const name = (e: TimelineEntry) => (e.event ? e.title : `${e.title} (${e.field.toLowerCase()})`)
-  // A range ending in a later epoch runs off the end of this epoch's axis.
-  const sameEpochEnd = (e: TimelineEntry) => !!e.endYear && (e.endEpoch ?? e.epoch ?? 0) === (e.epoch ?? 0)
-  // An open period (no death date yet) runs on to the end of the axis.
-  const spanEnd = (e: TimelineEntry) =>
-    sameEpochEnd(e) ? e.endYear! : e.endYear || e.openEnd ? Infinity : e.year
-  const isBar = (e: TimelineEntry) => (!!e.endYear || !!e.openEnd) && spanEnd(e) > e.year
-  const fullDate = (e: TimelineEntry) =>
-    e.endField ? `${e.date} — ${e.endDate || 'досі'}` : e.date
 
   const labelHalf = (y: TimelineYear) => Math.min(170, Math.max(name(y.main).length, 8) * 7.4) / 2 + 8
 
   // Shifts a label sideways so it stays inside the stage near either edge.
   const labelShift = (y: TimelineYear) => {
-    const cx = x(y.year)
+    const cx = x(yearPos(y))
     const half = labelHalf(y)
     return Math.max(half - cx, 0) - Math.max(cx + half - width, 0)
   }
@@ -136,7 +161,7 @@
   // on hover.
   const placement = $derived.by(() => {
     const rows: [number, number][][] = [[], []]
-    const out = new Map<number, 0 | 1>()
+    const out = new Map<string, 0 | 1>()
     if (!years) return out
     const byWeight = [...years].sort(
       (a, b) =>
@@ -145,14 +170,14 @@
         b.main.text - a.main.text,
     )
     for (const y of byWeight) {
-      const dot = x(y.year)
+      const dot = x(yearPos(y))
       if (dot < 0 || dot > width) continue // off-screen dots get no label
       const cx = dot + labelShift(y)
       const half = labelHalf(y)
       for (const row of [0, 1] as const) {
         if (rows[row].every(([a, b]) => cx + half < a || cx - half > b)) {
           rows[row].push([cx - half, cx + half])
-          out.set(y.year, row)
+          out.set(keyOf(y), row)
           break
         }
       }
@@ -167,25 +192,27 @@
 
   const spans = $derived.by(() => {
     if (!years) return []
-    // A range within a single year (144.087 — 144.125) is just its dot.
-    const ranges = years.flatMap((y) => y.entries.filter((e) => isBar(e) && !filters.noBars.includes(e.type ?? '')))
-    ranges.sort((a, b) => a.year - b.year || spanEnd(b) - spanEnd(a))
+    const ranges = years
+      .flatMap((y) => y.entries.filter((e) => isBar(e) && !filters.noBars.includes(e.type ?? '')))
+      .map((e) => ({ ...e, start: startPos(e), end: endPos(e) }))
+    ranges.sort((a, b) => a.start - b.start || b.end - a.end)
     const laneEnds: number[] = []
-    return ranges.map((e) => {
-      let lane = laneEnds.findIndex((end) => end < e.year)
+    return ranges.map((r) => {
+      let lane = laneEnds.findIndex((end) => end < r.start)
       if (lane < 0) lane = laneEnds.push(0) - 1
-      laneEnds[lane] = spanEnd(e)
-      return { ...e, lane, end: spanEnd(e) }
+      laneEnds[lane] = r.end
+      return { ...r, lane }
     })
   })
 
   // Ranges still going on in the selected year, started earlier.
-  const ongoing = $derived(
-    selected ? spans.filter((s) => s.year < selected.year && s.end >= selected.year) : [],
-  )
+  const ongoing = $derived.by(() => {
+    if (!selected) return []
+    const at = yearPos(selected)
+    return spans.filter((s) => s.start < at && s.end >= at && keyOf(s) !== keyOf(selected))
+  })
 
-  // Which color means which type, for the types that are on the timeline.
-  // Every type in this epoch, hidden ones included so they can come back.
+  // Every type on this axis, hidden ones included so they can come back.
   const legend = $derived.by(() => {
     const seen = new Map<string, { label: string; bars: boolean }>()
     for (const y of epochYears ?? [])
@@ -200,40 +227,55 @@
   const barTypes = $derived(legend.filter((l) => l.bars))
   let barsMenu = $state(false)
 
-  // Axis ticks at a round step: 1, 2 or 5 × 10ⁿ years, about 110px apart.
+  // The epoch a position on a shared axis falls in, and the year within it.
+  function inEpoch(p: number): { epoch: number; year: number } {
+    if (!offsets) return { epoch, year: p }
+    let found = { epoch: 1, year: p }
+    for (const [e, at] of offsets) if (p >= at) found = { epoch: e, year: p - at }
+    return found
+  }
+
+  // Axis ticks at a round step: 1, 2 or 5 × 10ⁿ years, about 110px apart,
+  // labelled with the year inside its epoch.
   const ticks = $derived.by(() => {
     const span = to - from
     const rough = span / Math.max((width - 2 * PAD) / 110, 1)
     const pow = 10 ** Math.floor(Math.log10(Math.max(rough, 1)))
     const step = [1, 2, 5, 10].map((m) => m * pow).find((s) => s >= rough) ?? 10 * pow
-    const out: number[] = []
-    for (let t = Math.ceil(from / step) * step; t <= to; t += step) out.push(t)
+    const out: { at: number; label: number }[] = []
+    for (let t = Math.ceil(from / step) * step; t <= to; t += step) out.push({ at: t, label: Math.round(inEpoch(t).year) })
     return out
   })
 
+  // Where each epoch begins on a shared axis.
+  const boundaries = $derived(
+    offsets ? [...offsets].map(([e, at]) => ({ epoch: e, at })).filter((b) => b.at > from && b.at < to) : [],
+  )
+
   // --- selection --------------------------------------------------------
 
-  function select(year: number | null, inEpoch = epoch) {
+  function select(y: { epoch?: number; year: number } | null, tab = epoch) {
     const q = new URLSearchParams()
-    if (epochs.length > 1 || inEpoch) q.set('epoch', String(inEpoch))
-    if (year !== null) q.set('year', String(year))
+    const e = y ? (y.epoch ?? 0) : tab
+    if (epochs.length > 1 || e) q.set('epoch', String(e))
+    if (y) q.set('year', String(y.year))
     navigate(worldHref(undefined, '/timeline' + (q.size ? '?' + q : '')), { replace: true })
   }
 
   // Zoom in on a newly selected year (also when opened from a ?year= link).
-  let lastFocused: number | null = null
+  let lastFocused: string | null = null
   $effect(() => {
     const y = selected
     if (!y) {
       lastFocused = null
       return
     }
-    if (y.year === lastFocused || !width) return
-    lastFocused = y.year
+    if (keyOf(y) === lastFocused || !width) return
+    lastFocused = keyOf(y)
     untrack(() => {
       const [min, max] = fullRange()
       const span = Math.min(to - from, Math.max(12, (max - min) / 6))
-      animateTo(() => focusRange(y.year, span))
+      animateTo(() => focusRange(yearPos(y), span))
     })
   })
 
@@ -262,7 +304,7 @@
     else if (e.key === 'Escape') select(null)
     else if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
       const i = selectedIndex < 0 ? 0 : selectedIndex + (e.key === 'ArrowRight' ? 1 : -1)
-      if (years[i]) select(years[i].year)
+      if (years[i]) select(years[i])
     }
   }
 
@@ -350,11 +392,11 @@
   >
     <div class="bar">
       <h1>Таймлайн</h1>
-      {#if epochs.length > 1}
+      {#if epochs.length > 1 && !shared}
         <div class="epochs" role="tablist" aria-label="Епохи">
           {#each epochs as e (e)}
             <button role="tab" class:on={e === epoch} aria-selected={e === epoch} onclick={() => select(null, e)}>
-              {e ? `${epochName(e)}${era}` : 'Без епохи'}
+              {e ? epochName(store.world, e) : 'Без епохи'}
             </button>
           {/each}
         </div>
@@ -412,44 +454,52 @@
       </div>
     {:else if years}
       <div class="axis"></div>
-      {#each ticks as t (t)}
-        <div class="tick" style:left="{x(t)}px"><span>{t}</span></div>
+      {#each ticks as t (t.at)}
+        <div class="tick" style:left="{x(t.at)}px"><span>{t.label}</span></div>
       {/each}
+      {#each boundaries as b (b.epoch)}
+        <div class="boundary" style:left="{x(b.at)}px"><span>{epochName(store.world, b.epoch)}</span></div>
+      {/each}
+      {#if nowPos !== null && nowPos >= from && nowPos <= to}
+        <div class="now" style:left="{x(nowPos)}px" title="Найпізніша дата у світі">
+          <span>Зараз · {now && label(now)}</span>
+        </div>
+      {/if}
 
-      {#each years as y (y.year)}
+      {#each years as y (keyOf(y))}
         {@const r = radius(y)}
-        {@const row = placement.get(y.year)}
+        {@const row = placement.get(keyOf(y))}
         <button
           class="point"
           class:selected={selected === y}
           class:labelled={row !== undefined}
-          style:left="{x(y.year)}px"
+          style:left="{x(yearPos(y))}px"
           style:--r="{r}px"
           style:--c={typeColor(y.main.type)}
-          onclick={() => select(y.year)}
-          aria-label="{yearLabel(y.year)}: {name(y.main)}, {plural(y.entries.length, ['подія', 'події', 'подій'])}"
+          onclick={() => select(y)}
+          aria-label="{label(y)}: {name(y.main)}, {plural(y.entries.length, ['подія', 'події', 'подій'])}"
         >
           <span class="dot"></span>
           <span class="label" class:below={row === 1} style:--shift="{labelShift(y)}px">
-            <span class="year">{yearLabel(y.year)}</span>
+            <span class="year">{label(y)}</span>
             <span class="name">{name(y.main)}</span>
           </span>
         </button>
       {/each}
 
       {#each spans as s (s.title + s.field)}
-        {@const x1 = x(s.year)}
+        {@const x1 = x(s.start)}
         {@const x2 = s.end === Infinity ? width + 40 : x(s.end)}
         {#if x2 > -20 && x1 < width + 20}
           <button
             class="span"
-            class:active={selected && s.year <= selected.year && s.end >= selected.year}
+            class:active={selected && Math.floor(s.start) <= yearPos(selected) && s.end >= yearPos(selected)}
             style:left="{x1}px"
             style:width="{Math.max(x2 - x1, 6)}px"
             style:top="calc(var(--axis) + {SPANS_TOP + s.lane * LANE}px)"
             style:--c={typeColor(s.type)}
             style:--inset="{Math.max(0, -x1)}px"
-            onclick={() => select(s.year)}
+            onclick={() => select(s)}
             title="{s.title} · {fullDate(s)}"
           >
             <span>{s.title}</span>
@@ -464,18 +514,18 @@
       <header>
         <span class="big-dot" style:--r="{radius(selected)}px" style:--c={typeColor(selected.main.type)}></span>
         <div class="heading">
-          <div class="year">{yearLabel(selected.year)}</div>
+          <div class="year">{label(selected)}</div>
           <a class="main" href={pageHref(selected.main.title)}>{name(selected.main)}</a>
         </div>
         <button class="icon" onclick={() => select(null)} aria-label="Закрити"><Icon name="close" size={18} /></button>
       </header>
 
       <div class="nav">
-        <button disabled={selectedIndex <= 0} onclick={() => select(years![selectedIndex - 1].year)}>
+        <button disabled={selectedIndex <= 0} onclick={() => select(years![selectedIndex - 1])}>
           ← {years![selectedIndex - 1]?.year ?? ''}
         </button>
         <span class="muted">{plural(selected.entries.length, ['стаття', 'статті', 'статей'])}</span>
-        <button disabled={selectedIndex >= years!.length - 1} onclick={() => select(years![selectedIndex + 1].year)}>
+        <button disabled={selectedIndex >= years!.length - 1} onclick={() => select(years![selectedIndex + 1])}>
           {years![selectedIndex + 1]?.year ?? ''} →
         </button>
       </div>
@@ -700,6 +750,44 @@
     height: 100vh;
     border-left: 1px dashed color-mix(in srgb, var(--border) 60%, transparent);
   }
+  /* Where an epoch begins, on an axis shared by several. */
+  .boundary {
+    position: absolute;
+    top: 7rem;
+    bottom: 0;
+    border-left: 2px solid var(--text-muted);
+    opacity: 0.5;
+    pointer-events: none;
+  }
+  .boundary span {
+    position: absolute;
+    top: 0;
+    left: 6px;
+    font-size: 0.78rem;
+    font-weight: 600;
+    white-space: nowrap;
+  }
+  /* The present: the latest date in the world. */
+  .now {
+    z-index: 0;
+    position: absolute;
+    top: 7rem;
+    bottom: 0;
+    border-left: 2px dashed var(--accent);
+    pointer-events: none;
+  }
+  .now span {
+    position: absolute;
+    top: 0;
+    left: 6px;
+    padding: 0 0.3rem;
+    border-radius: 4px;
+    background: var(--accent-soft);
+    color: var(--accent);
+    font-size: 0.75rem;
+    font-weight: 600;
+    white-space: nowrap;
+  }
   .tick span {
     position: absolute;
     top: 14px;
@@ -799,6 +887,11 @@
   .point:hover .label,
   .point:focus-visible .label {
     opacity: 1;
+  }
+  /* Lines crossing the axis (epoch borders, the present) pass under labels. */
+  .labelled .label {
+    background: color-mix(in srgb, var(--bg) 85%, transparent);
+    border-radius: 6px;
   }
   .point:hover .label {
     background: var(--bg);

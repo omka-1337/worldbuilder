@@ -17,9 +17,10 @@ type TimelineEntry struct {
 	Date      string `json:"date"`  // the field's text, as the author wrote it
 	Epoch     int    `json:"epoch,omitempty"`
 	Year      int    `json:"year"`
-	Day       int    `json:"day,omitempty"`
+	Part      int    `json:"part,omitempty"`     // the number after the year's dot: 139.096
 	EndEpoch  int    `json:"endEpoch,omitempty"` // for ranges like 340–347
 	EndYear   int    `json:"endYear,omitempty"`
+	EndPart   int    `json:"endPart,omitempty"`
 	// A period spans two fields (born → died): EndField is the closing
 	// field's label and EndDate its text. OpenEnd marks a period whose end is
 	// not filled in (still alive, still standing).
@@ -91,7 +92,8 @@ func (v *Vault) Timeline() []TimelineYear {
 				Date:      plainDate(values[fd.Key]),
 				Epoch:     d.start.epoch,
 				Year:      d.start.year,
-				Day:       d.start.day,
+				Part:      d.start.part,
+				EndPart:   d.end.part,
 				EndEpoch:  d.end.epoch,
 				EndYear:   d.end.year,
 				Text:      p.textLen,
@@ -125,9 +127,10 @@ func (v *Vault) Timeline() []TimelineYear {
 }
 
 // A point in a world's calendar. Years restart with each epoch, so the
-// epoch comes first; 0 means the date names none. Day is the day of the
-// year when given as year.day ("139.096").
-type datePoint struct{ epoch, year, day int }
+// epoch comes first; 0 means the date names none. Part is the subdivision
+// of the year written after its dot ("139.096"); how many a year has is set
+// in the world's calendar.
+type datePoint struct{ epoch, year, part int }
 
 func (a datePoint) before(b datePoint) bool {
 	if a.epoch != b.epoch {
@@ -136,7 +139,7 @@ func (a datePoint) before(b datePoint) bool {
 	if a.year != b.year {
 		return a.year < b.year
 	}
-	return a.day < b.day
+	return a.part < b.part
 }
 
 type dateRange struct{ start, end datePoint } // end.year is 0 for a single date
@@ -152,7 +155,7 @@ var (
 )
 
 // parseDate reads dates as worldbuilders write them: "312 ЕП", "-40",
-// "139.096 III Епохи" (year.day of the third epoch), and ranges such as
+// "139.096 III Епохи" (year.part of the third epoch), and ranges such as
 // "340–347", "211-224 III Епохи" or "142 р. III Епохи — 145 р. III Епохи".
 func parseDate(s string) (dateRange, bool) {
 	s = noiseRe.ReplaceAllString(s, " ")
@@ -188,7 +191,7 @@ func parsePoint(s string) (datePoint, bool) {
 		p.year = -p.year
 	}
 	if m[3] != "" {
-		p.day, _ = strconv.Atoi(m[3])
+		p.part, _ = strconv.Atoi(m[3])
 	}
 	if r := romanRe.FindStringSubmatch(romanLookalikes.Replace(s)); r != nil {
 		p.epoch = fromRoman(r[1])

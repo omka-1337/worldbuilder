@@ -7,6 +7,7 @@
   import { navigate } from '../lib/router.svelte'
   import { store, refresh } from '../lib/store.svelte'
   import { linkComplete } from '../lib/linkComplete'
+  import { exampleDate } from '../lib/calendar'
 
   // The article being edited; empty for a brand-new one from "New article".
   let { title }: { title: string } = $props()
@@ -42,7 +43,6 @@
 
   const types = $derived(Object.entries(store.world?.types ?? {}).sort((a, b) => a[1].label.localeCompare(b[1].label)))
   const schema = $derived<FieldDef[]>(store.world?.types[type]?.fields ?? [])
-  const era = $derived(store.world?.era ? ' ' + store.world.era : '')
   const pages = () => store.pages
 
   onMount(async () => {
@@ -257,7 +257,7 @@
                 bind:value={values[f.key]}
                 use:linkComplete={pages}
                 autocomplete="off"
-                placeholder={f.type === 'date' ? `Рік, напр. 343${era} або 340–347` : ''}
+                placeholder={f.type === 'date' ? `Напр. ${exampleDate(store.world)}` : ''}
               />
               {#if f.type === 'date' && values[f.key]?.trim() && !hasYear(values[f.key])}
                 <small class="warn">Без числа року стаття не з'явиться на таймлайні.</small>
