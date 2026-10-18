@@ -463,7 +463,7 @@
     margin: 0.5rem 0.5rem 0;
   }
   .pages {
-    overflow-y: auto;
+    overflow: auto;
     flex: 1;
     font-size: 0.93rem;
   }

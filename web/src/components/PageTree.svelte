@@ -125,10 +125,14 @@
 </ul>
 
 <style>
+  /* Rows are as wide as their names, never cut: a long or deep tree
+     scrolls sideways, and every row still spans the full width. */
   .tree {
     list-style: none;
     margin: 0;
     padding: 0;
+    width: max-content;
+    min-width: 100%;
   }
   .row {
     display: flex;
@@ -173,7 +177,6 @@
   }
   .name {
     flex: 1;
-    min-width: 0;
     display: flex;
     align-items: center;
     gap: 0.4rem;
@@ -185,8 +188,6 @@
   }
   .text {
     white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
   }
   .icon {
     display: grid;
