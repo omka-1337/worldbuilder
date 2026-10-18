@@ -6,8 +6,11 @@ export type Side = 'left' | 'right'
 
 const KEY = 'worldbuilder:prefs'
 
-function load(): { theme: Theme; ribbon: Side } {
-  const defaults = { theme: 'system' as Theme, ribbon: 'left' as Side }
+// The article tree's width in px, dragged by its edge.
+export const SIDEBAR = { min: 200, max: 560, default: 272 }
+
+function load(): { theme: Theme; ribbon: Side; sidebar: number } {
+  const defaults = { theme: 'system' as Theme, ribbon: 'left' as Side, sidebar: SIDEBAR.default }
   try {
     return { ...defaults, ...JSON.parse(localStorage.getItem(KEY) ?? '{}') }
   } catch {
@@ -19,9 +22,9 @@ export const prefs = $state(load())
 
 $effect.root(() => {
   $effect(() => {
-    const { theme, ribbon } = prefs
+    const { theme, ribbon, sidebar } = prefs
     try {
-      localStorage.setItem(KEY, JSON.stringify({ theme, ribbon }))
+      localStorage.setItem(KEY, JSON.stringify({ theme, ribbon, sidebar }))
     } catch {
       // Private mode or storage disabled: preferences last for this session.
     }

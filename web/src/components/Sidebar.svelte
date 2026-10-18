@@ -9,6 +9,7 @@
   import { router, navigate, titleFrom } from '../lib/router.svelte'
   import { store, refresh } from '../lib/store.svelte'
   import { drag, dragging, endDrag } from '../lib/drag.svelte'
+  import { prefs, SIDEBAR } from '../lib/prefs.svelte'
 
   let query = $state('')
   let hits = $state<Hit[]>([])
@@ -250,6 +251,31 @@
   }
 
   let overRoot = $state(false)
+
+  // --- width -------------------------------------------------------------
+
+  let resizing = $state(false)
+  const clampWidth = (w: number) => Math.round(Math.min(Math.max(w, SIDEBAR.min), SIDEBAR.max))
+
+  function startResize(e: PointerEvent) {
+    if (e.button !== 0) return
+    e.preventDefault()
+    const handle = e.currentTarget as HTMLElement
+    handle.setPointerCapture(e.pointerId)
+    const startX = e.clientX
+    const startWidth = handle.parentElement!.getBoundingClientRect().width
+    resizing = true
+    const move = (e: PointerEvent) => (prefs.sidebar = clampWidth(startWidth + e.clientX - startX))
+    const up = () => {
+      resizing = false
+      handle.removeEventListener('pointermove', move)
+      handle.removeEventListener('pointerup', up)
+      handle.removeEventListener('pointercancel', up)
+    }
+    handle.addEventListener('pointermove', move)
+    handle.addEventListener('pointerup', up)
+    handle.addEventListener('pointercancel', up)
+  }
 </script>
 
 <aside class="sidebar">
@@ -316,6 +342,24 @@
     {/if}
   </div>
 
+  <!-- The edge towards the article: drag to resize, double-click to reset;
+       arrow keys when focused. -->
+  <button
+    class="resize"
+    class:resizing
+    aria-label="Ширина панелі статей: стрілки вліво й вправо"
+    title="Перетягніть, щоб змінити ширину; подвійний клік — як було"
+    onpointerdown={startResize}
+    ondblclick={() => (prefs.sidebar = SIDEBAR.default)}
+    onkeydown={(e) => {
+      const step = e.key === 'ArrowLeft' ? -16 : e.key === 'ArrowRight' ? 16 : 0
+      if (step) {
+        e.preventDefault()
+        prefs.sidebar = clampWidth(prefs.sidebar + step)
+      }
+    }}
+  ></button>
+
   <footer>
     <a class="world" href={worldHref()} title="Головна сторінка світу">{store.world?.name ?? ''}</a>
     <button class="icon" onclick={() => (settingsOpen = true)} title="Налаштування" aria-label="Налаштування">
@@ -345,6 +389,37 @@
   }
   .search {
     position: relative;
+  }
+  .resize {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    right: 0;
+    z-index: 5;
+    width: 7px; /* the sidebar clips overflow, so the grip stays inside */
+    padding: 0;
+    border: none;
+    border-radius: 0;
+    background: none;
+    cursor: col-resize;
+    touch-action: none;
+  }
+  .resize::after {
+    content: '';
+    position: absolute;
+    inset: 0 0 0 4px;
+    transition: background 0.15s;
+  }
+  .resize:hover::after,
+  .resize:focus-visible::after,
+  .resize.resizing::after {
+    background: var(--accent);
+  }
+  .resize:focus-visible {
+    outline: none;
+  }
+  .resize:hover {
+    background: none;
   }
   .search input {
     width: 100%;

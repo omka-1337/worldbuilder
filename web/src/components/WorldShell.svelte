@@ -9,7 +9,7 @@
   import Types from '../views/Types.svelte'
   import Calendar from '../views/Calendar.svelte'
   import Versions from '../views/Versions.svelte'
-  import { prefs } from '../lib/prefs.svelte'
+  import { prefs, SIDEBAR } from '../lib/prefs.svelte'
   import Article from '../views/Article.svelte'
   import Editor from '../views/Editor.svelte'
   import AllPages from '../views/AllPages.svelte'
@@ -75,7 +75,11 @@
   </main>
 {:else}
   <Dialogs />
-  <div class="layout ribbon-{prefs.ribbon}" class:menu-open={menuOpen}>
+  <div
+    class="layout ribbon-{prefs.ribbon}"
+    class:menu-open={menuOpen}
+    style:--sidebar-width="{Math.min(Math.max(prefs.sidebar, SIDEBAR.min), SIDEBAR.max)}px"
+  >
     <button class="menu-toggle" onclick={() => (menuOpen = !menuOpen)} aria-label="Меню">☰</button>
     <Ribbon />
     <Sidebar />
@@ -122,11 +126,11 @@
     min-height: 100vh;
   }
   .layout.ribbon-left {
-    grid-template-columns: 3rem 17rem minmax(0, 1fr);
+    grid-template-columns: 3rem var(--sidebar-width) minmax(0, 1fr);
     grid-template-areas: 'ribbon sidebar main';
   }
   .layout.ribbon-right {
-    grid-template-columns: 17rem minmax(0, 1fr) 3rem;
+    grid-template-columns: var(--sidebar-width) minmax(0, 1fr) 3rem;
     grid-template-areas: 'sidebar main ribbon';
   }
   .layout :global(.ribbon) {
