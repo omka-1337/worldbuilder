@@ -96,7 +96,7 @@
     <div class="stage" role="presentation" onclick={(e) => e.target === e.currentTarget && closeLightbox()}>
       {#if shots.length > 1}
         <button class="nav prev" onclick={() => go(index - 1)} aria-label="Попереднє (←)">
-          <Icon name="down" size={30} />
+          <Icon name="left" size={28} />
         </button>
       {/if}
       {#key current.url}
@@ -104,7 +104,7 @@
       {/key}
       {#if shots.length > 1}
         <button class="nav next" onclick={() => go(index + 1)} aria-label="Наступне (→)">
-          <Icon name="down" size={30} />
+          <Icon name="right" size={28} />
         </button>
       {/if}
     </div>
@@ -224,6 +224,7 @@
     place-items: center;
     width: 3rem;
     height: 3rem;
+    padding: 0;
     border: none;
     border-radius: 50%;
     background: #ffffff14;
@@ -234,11 +235,9 @@
   }
   .prev {
     left: 1rem;
-    rotate: 90deg;
   }
   .next {
     right: 1rem;
-    rotate: -90deg;
   }
   footer {
     padding: 0.6rem 1rem 0.8rem;
