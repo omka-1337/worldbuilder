@@ -59,13 +59,22 @@ func (v *Vault) Tree() []*TreeNode {
 		n.Name, n.Title, n.Type = p.Title, p.Title, p.Type
 	}
 
+	// Groups first, as in a file manager: folders and articles that hold
+	// others come before lone articles; each kind in alphabetical order.
 	c := v.collator()
+	group := func(n *TreeNode) bool { return n.Title == "" || len(n.Children) > 0 }
 	var sortAll func(*TreeNode)
 	sortAll = func(n *TreeNode) {
-		sort.Slice(n.Children, func(i, j int) bool { return c.CompareString(n.Children[i].Name, n.Children[j].Name) < 0 })
 		for _, ch := range n.Children {
 			sortAll(ch)
 		}
+		sort.Slice(n.Children, func(i, j int) bool {
+			a, b := n.Children[i], n.Children[j]
+			if group(a) != group(b) {
+				return group(a)
+			}
+			return c.CompareString(a.Name, b.Name) < 0
+		})
 	}
 	sortAll(root)
 	return nonNil(root.Children)

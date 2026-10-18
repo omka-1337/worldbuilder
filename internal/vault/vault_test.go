@@ -930,6 +930,22 @@ func TestFolders(t *testing.T) {
 	if folderNode("Картинки") != nil {
 		t.Error("a folder of pictures shows in the tree")
 	}
+	// Groups (folders, articles holding others) come before lone articles.
+	var kinds []bool
+	for _, n := range v.Tree() {
+		kinds = append(kinds, n.Title == "" || len(n.Children) > 0)
+	}
+	if !slices.IsSortedFunc(kinds, func(a, b bool) int {
+		if a == b {
+			return 0
+		}
+		if a {
+			return -1
+		}
+		return 1
+	}) || !kinds[0] {
+		t.Errorf("groups not first: %v", kinds)
+	}
 	if _, err := v.CreateFolder("../outside"); err == nil {
 		t.Error("folder outside the world created")
 	}
