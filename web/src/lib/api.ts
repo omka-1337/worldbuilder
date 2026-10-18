@@ -57,6 +57,7 @@ export interface TypeDef {
   color?: string // "#rrggbb"
   event?: boolean
   fields: FieldDef[]
+  former?: Record<string, string> // labels of fields taken out of the type, by key
 }
 
 export interface TypeInfo extends TypeDef {

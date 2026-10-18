@@ -5,6 +5,9 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"sort"
+	"strings"
+	"unicode"
 
 	"github.com/goccy/go-yaml"
 	"golang.org/x/text/language"
@@ -27,6 +30,9 @@ type TypeDef struct {
 	Color  string     `yaml:"color" json:"color,omitempty"` // "#rrggbb", used on the timeline
 	Event  bool       `yaml:"event" json:"event,omitempty"` // articles of this type are timeline events
 	Fields []FieldDef `yaml:"fields" json:"fields"`
+	// Former keeps the labels of fields taken out of the type, by key:
+	// articles still hold their values and show them under these names.
+	Former map[string]string `yaml:"former" json:"former,omitempty"`
 }
 
 type FieldDef struct {
@@ -37,6 +43,35 @@ type FieldDef struct {
 	// opens (born → died, founded → dissolved): the timeline draws the two as
 	// one bar.
 	End string `yaml:"end" json:"end,omitempty"`
+}
+
+// fieldLabel names an infobox field that is not in the article's type: one
+// taken out of it shows under its old label, one some other type has under
+// that type's label. Anything else is the article's own field and its key is
+// the name the author typed, unless it reads like a generated key
+// ("дата-народження"), which is turned back into words.
+func (w World) fieldLabel(typ, key string) string {
+	if label, ok := w.Types[typ].Former[key]; ok {
+		return label
+	}
+	keys := make([]string, 0, len(w.Types))
+	for k := range w.Types {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys) // the same label every time when types disagree
+	for _, k := range keys {
+		for _, f := range w.Types[k].Fields {
+			if f.Key == key && f.Type != "section" {
+				return f.Label
+			}
+		}
+	}
+	if key == "" || slug(key) != key {
+		return key
+	}
+	label := []rune(strings.ReplaceAll(key, "-", " "))
+	label[0] = unicode.ToUpper(label[0])
+	return string(label)
 }
 
 const worldFile = "world.yaml"

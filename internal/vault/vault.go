@@ -378,7 +378,7 @@ func (v *Vault) Get(title string) (*View, error) {
 	view.Location, view.Children = v.location(p, v.collator())
 
 	// Infobox rows follow the order declared by the type, then any extra
-	// fields in file order, labelled by their key.
+	// fields in file order.
 	def := v.world.Types[p.Type]
 	view.TypeLabel = def.Label
 	values := map[string]string{}
@@ -410,7 +410,7 @@ func (v *Vault) Get(title string) (*View, error) {
 	}
 	for _, f := range p.Infobox {
 		if !used[f.Key] && f.Value != "" {
-			view.Infobox = append(view.Infobox, Row{Label: f.Key, HTML: v.renderInline(f.Value)})
+			view.Infobox = append(view.Infobox, Row{Label: v.world.fieldLabel(p.Type, f.Key), HTML: v.renderInline(f.Value)})
 		}
 	}
 	return view, nil

@@ -451,6 +451,82 @@ func TestSaveTypes(t *testing.T) {
 	}
 }
 
+func TestRemovedFieldKeepsLabel(t *testing.T) {
+	v, err := Open(writeWorld(t, fixture), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	rows := func() map[string]string {
+		view, err := v.Get("Аедрін Сірий")
+		if err != nil {
+			t.Fatal(err)
+		}
+		out := map[string]string{}
+		for _, r := range view.Infobox {
+			out[r.Label] = r.HTML
+		}
+		return out
+	}
+	setFields := func(keep func(FieldDef) bool) {
+		types := v.Types()
+		for i := range types {
+			if types[i].Key == "character" {
+				types[i].Fields = slices.DeleteFunc(types[i].Fields, func(f FieldDef) bool { return !keep(f) })
+			}
+		}
+		if _, err := v.SaveTypes(types); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// Taking "affiliation" out of the type leaves the article's value in
+	// place, under the field's old label.
+	setFields(func(f FieldDef) bool { return f.Key != "affiliation" })
+	raw, _ := os.ReadFile(filepath.Join(v.Root(), "Аедрін Сірий.md"))
+	if !strings.Contains(string(raw), "affiliation:") {
+		t.Errorf("article lost the value:\n%s", raw)
+	}
+	if r := rows(); !strings.Contains(r["Приналежність"], "Орден Попелу") || r["Титул"] != "Перший Магістр" {
+		t.Errorf("rows after removing = %v", r)
+	}
+	if got := v.World().Types["character"].Former; got["affiliation"] != "Приналежність" {
+		t.Errorf("former = %v", got)
+	}
+
+	// Saving again remembers it; putting the field back forgets it.
+	setFields(func(FieldDef) bool { return true })
+	if got := v.World().Types["character"].Former; got["affiliation"] != "Приналежність" {
+		t.Errorf("former after another save = %v", got)
+	}
+	types := v.Types()
+	for i := range types {
+		if types[i].Key == "character" {
+			types[i].Fields = append(types[i].Fields, FieldDef{Key: "affiliation", Label: "Орден"})
+		}
+	}
+	if _, err := v.SaveTypes(types); err != nil {
+		t.Fatal(err)
+	}
+	if got := v.World().Types["character"].Former; len(got) != 0 {
+		t.Errorf("former after restoring = %v", got)
+	}
+	if r := rows(); !strings.Contains(r["Орден"], "Орден Попелу") {
+		t.Errorf("rows after restoring = %v", r)
+	}
+
+	// Without a record, a generated key reads as words; a typed one is kept.
+	w := v.World()
+	if got := w.fieldLabel("character", "дата-заснування"); got != "Дата заснування" {
+		t.Errorf("generated key label = %q", got)
+	}
+	if got := w.fieldLabel("location", "born"); got != "Народження" {
+		t.Errorf("other type's label = %q", got)
+	}
+	if got := w.fieldLabel("character", "Колір очей"); got != "Колір очей" {
+		t.Errorf("typed key label = %q", got)
+	}
+}
+
 func TestSourceRoundTrip(t *testing.T) {
 	files := map[string]string{}
 	for k, v := range fixture {

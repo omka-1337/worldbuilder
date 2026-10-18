@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 
@@ -43,7 +44,7 @@ func (v *Vault) Types() []TypeInfo {
 			Label:  def.Label,
 			Color:  def.Color,
 			Event:  def.Event,
-			Fields: nonNil(def.Fields),
+			Fields: nonNil(slices.Clone(def.Fields)), // callers may edit it
 			Count:  counts[key],
 		})
 	}
@@ -64,6 +65,13 @@ func (v *Vault) SaveTypes(in []TypeInfo) ([]TypeInfo, error) {
 
 	v.cfgMu.Lock()
 	defer v.cfgMu.Unlock()
+
+	v.mu.RLock()
+	for key, t := range types {
+		t.Former = former(v.world.Types[key], t.Fields)
+		types[key] = t
+	}
+	v.mu.RUnlock()
 
 	path := filepath.Join(v.root, worldFile)
 	var doc yaml.MapSlice
@@ -100,10 +108,11 @@ func (v *Vault) SaveTypes(in []TypeInfo) ([]TypeInfo, error) {
 
 // typeOut is how a type is written to world.yaml.
 type typeOut struct {
-	Label  string     `yaml:"label"`
-	Color  string     `yaml:"color,omitempty"`
-	Event  bool       `yaml:"event,omitempty"`
-	Fields []fieldOut `yaml:"fields"`
+	Label  string            `yaml:"label"`
+	Color  string            `yaml:"color,omitempty"`
+	Event  bool              `yaml:"event,omitempty"`
+	Fields []fieldOut        `yaml:"fields"`
+	Former map[string]string `yaml:"former,omitempty"`
 }
 
 type fieldOut struct {
@@ -174,6 +183,28 @@ func normalizeTypes(in []TypeInfo) (map[string]typeOut, []string, error) {
 		order = append(order, key)
 	}
 	return types, order, nil
+}
+
+// former carries a type's labels of removed fields over to its new field
+// list: what it remembered before plus the fields dropped now, except any
+// that are back.
+func former(old TypeDef, fields []fieldOut) map[string]string {
+	out := map[string]string{}
+	for key, label := range old.Former {
+		out[key] = label
+	}
+	for _, f := range old.Fields {
+		if f.Type != "section" {
+			out[f.Key] = f.Label
+		}
+	}
+	for _, f := range fields {
+		delete(out, f.Key)
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
 }
 
 var colorRe = regexp.MustCompile(`^#[0-9a-f]{6}$`)

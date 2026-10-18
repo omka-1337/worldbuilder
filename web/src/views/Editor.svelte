@@ -8,6 +8,7 @@
   import { store, refresh } from '../lib/store.svelte'
   import { linkComplete } from '../lib/linkComplete'
   import { exampleDate } from '../lib/calendar'
+  import { fieldLabel } from '../lib/fields'
 
   // The article being edited; empty for a brand-new one from "New article".
   let { title }: { title: string } = $props()
@@ -271,10 +272,10 @@
           {/each}
           {#each extras as key, i (key)}
             <div class="field">
-              <label for="field-{key}">{key}</label>
+              <label for="field-{key}">{fieldLabel(store.world, type, key)}</label>
               <div class="with-remove">
                 <input id="field-{key}" bind:value={values[key]} use:linkComplete={pages} autocomplete="off" />
-                <button class="icon" onclick={() => extras.splice(i, 1)} aria-label="Прибрати поле «{key}»">
+                <button class="icon" onclick={() => extras.splice(i, 1)} aria-label="Прибрати поле «{fieldLabel(store.world, type, key)}»">
                   <Icon name="trash" size={15} />
                 </button>
               </div>
