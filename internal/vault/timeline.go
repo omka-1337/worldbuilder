@@ -83,10 +83,7 @@ func (v *Vault) datedFields(cal *calendar) []dated {
 		if !ok {
 			continue
 		}
-		values := map[string]string{}
-		for _, f := range p.Infobox {
-			values[f.Key] = f.Value
-		}
+		values := p.typeValues()
 		for _, fd := range def.Fields {
 			if fd.Type != "date" || strings.TrimSpace(values[fd.Key]) == "" {
 				continue
@@ -127,12 +124,7 @@ func (v *Vault) timeline(cal *calendar) Timeline {
 		// A period over two fields: the end comes from the paired field.
 		if d.field.End != "" && !e.HasEnd {
 			e.EndField = labelOf(d.def, d.field.End)
-			endValue := ""
-			for _, f := range d.page.Infobox {
-				if f.Key == d.field.End {
-					endValue = f.Value
-				}
-			}
+			endValue := d.page.typeValues()[d.field.End]
 			if r, ok := cal.parse(endValue); !ok || !r.start.has[cal.step] {
 				e.OpenEnd = true
 			} else if e.start.before(r.start) {

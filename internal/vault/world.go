@@ -66,8 +66,8 @@ func (w World) fieldLabel(typ, key string) string {
 			}
 		}
 	}
-	if key == "" || slug(key) != key {
-		return key
+	if key == "" || slug(key) != key || !unicode.IsLetter([]rune(key)[0]) {
+		return key // typed by the author ("211-224" stays a range)
 	}
 	label := []rune(strings.ReplaceAll(key, "-", " "))
 	label[0] = unicode.ToUpper(label[0])

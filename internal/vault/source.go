@@ -133,17 +133,7 @@ func (v *Vault) SaveSource(title string, src Source) (string, error) {
 	doc = setOrDelete(doc, "type", strings.TrimSpace(src.Type))
 	doc = setOrDelete(doc, "aliases", aliases)
 	doc = setOrDelete(doc, "categories", cleanList(src.Categories))
-	infobox := yaml.MapSlice{}
-	seen := map[string]bool{}
-	for _, f := range src.Infobox {
-		key, value := strings.TrimSpace(f.Key), strings.TrimSpace(f.Value)
-		if key == "" || value == "" || seen[key] {
-			continue
-		}
-		seen[key] = true
-		infobox = append(infobox, yaml.MapItem{Key: key, Value: value})
-	}
-	doc = setOrDelete(doc, "infobox", infobox)
+	doc = setOrDelete(doc, "infobox", infoboxYAML(src.Infobox))
 
 	var out bytes.Buffer
 	if len(doc) > 0 {
@@ -180,6 +170,37 @@ func (v *Vault) SaveSource(title string, src Source) (string, error) {
 		}
 	}
 	return saved, nil
+}
+
+// infoboxYAML lays out infobox fields for the frontmatter: fields of no
+// section first, in order, then each section's own fields nested under its
+// key, sections in the order they first appear.
+func infoboxYAML(fields []Field) yaml.MapSlice {
+	top := yaml.MapSlice{}
+	var order []string
+	sections := map[string]yaml.MapSlice{}
+	seen := map[[2]string]bool{}
+	for _, f := range fields {
+		key, value, section := strings.TrimSpace(f.Key), strings.TrimSpace(f.Value), strings.TrimSpace(f.Section)
+		if key == "" || value == "" || seen[[2]string{section, key}] {
+			continue
+		}
+		seen[[2]string{section, key}] = true
+		if section == "" {
+			top = append(top, yaml.MapItem{Key: key, Value: value})
+			continue
+		}
+		if _, ok := sections[section]; !ok {
+			order = append(order, section)
+		}
+		sections[section] = append(sections[section], yaml.MapItem{Key: key, Value: value})
+	}
+	for _, section := range order {
+		if !seen[[2]string{"", section}] { // a value of the same name wins
+			top = append(top, yaml.MapItem{Key: section, Value: sections[section]})
+		}
+	}
+	return top
 }
 
 // setOrDelete sets key to value, or removes it when value is empty.

@@ -539,13 +539,13 @@ func TestSourceRoundTrip(t *testing.T) {
 	}
 
 	src := v.Source("Вальмор")
-	if !src.Exists || src.Type != "location" || src.Infobox[0] != (Field{"founded", "120 ЕП"}) || src.Body != "Текст.\n" {
+	if !src.Exists || src.Type != "location" || src.Infobox[0] != (Field{Key: "founded", Value: "120 ЕП"}) || src.Body != "Текст.\n" {
 		t.Fatalf("source = %+v", src)
 	}
 
 	// Values that need quoting in YAML must survive; empty ones are dropped;
 	// unknown keys stay.
-	src.Infobox = []Field{{"founded", "[[Аедрін Сірий]]: 120"}, {"ruler", ""}, {"Мотто", "- вогонь"}}
+	src.Infobox = []Field{{Key: "founded", Value: "[[Аедрін Сірий]]: 120"}, {Key: "ruler"}, {Key: "Мотто", Value: "- вогонь"}}
 	src.Categories = []string{"Міста", " ", "міста"}
 	src.Aliases = nil
 	if _, err := v.SaveSource("Вальмор", src); err != nil {
@@ -718,7 +718,7 @@ func TestInfoboxImage(t *testing.T) {
 	}
 
 	src := v.Source("Аедрін Сірий")
-	src.Infobox = append(src.Infobox, Field{ImageKey, "![[" + name + "]]"}, Field{CaptionKey, "Портрет із [[Вальмор]]а"})
+	src.Infobox = append(src.Infobox, Field{Key: ImageKey, Value: "![[" + name + "]]"}, Field{Key: CaptionKey, Value: "Портрет із [[Вальмор]]а"})
 	if _, err := v.SaveSource("Аедрін Сірий", src); err != nil {
 		t.Fatal(err)
 	}
@@ -1131,5 +1131,95 @@ func TestFolders(t *testing.T) {
 	}
 	if _, err := v.Get("Мерлін"); err == nil {
 		t.Error("deleted article still in the index")
+	}
+}
+
+func TestOwnFieldsInSections(t *testing.T) {
+	files := map[string]string{}
+	for k, v := range fixture {
+		files[k] = v
+	}
+	files["world.yaml"] = `
+name: Test
+types:
+  character:
+    label: Персонаж
+    fields:
+      - { key: born, label: Народження, type: date }
+      - { key: looks, label: Зовнішність, type: section }
+      - { key: hair, label: Волосся }
+      - { key: work, label: Діяльність, type: section }
+      - { key: side, label: Сторона }
+`
+	files["Койл.md"] = `---
+type: character
+infobox:
+  born: "190"
+  hair: Чорне
+  Прізвисько: Рудий
+  work:
+    "211-224": Вільний найманець
+    "224-": "[[Вальмор]]"
+  gone:
+    Старе: поле
+---
+Текст.
+`
+	v, err := Open(writeWorld(t, files), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	view, err := v.Get("Койл")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got []string
+	for _, r := range view.Infobox {
+		if r.Section {
+			got = append(got, "# "+r.Label)
+		} else {
+			got = append(got, r.Label)
+		}
+	}
+	// The work section shows for its own fields alone; a section the type
+	// does not have keeps its fields under its name; loose fields come last.
+	want := "Народження | # Зовнішність | Волосся | # Діяльність | 211-224 | 224- | # Gone | Старе | Прізвисько"
+	if g := strings.Join(got, " | "); g != want {
+		t.Errorf("rows:\n got %s\nwant %s", g, want)
+	}
+	if a, _ := v.Get("Вальмор"); !slices.Contains(a.Backlinks, "Койл") {
+		t.Error("a link in a section's own field is not indexed")
+	}
+
+	// The editor gets the fields with their sections and writes them back
+	// nested, in its order.
+	src := v.Source("Койл")
+	var keys []string
+	for _, f := range src.Infobox {
+		keys = append(keys, f.Section+"/"+f.Key)
+	}
+	if g := strings.Join(keys, " "); g != "/born /hair /Прізвисько work/211-224 work/224- gone/Старе" {
+		t.Errorf("source fields = %s", g)
+	}
+	src.Infobox = []Field{
+		{Key: "born", Value: "190"},
+		{Key: "224-", Value: "[[Вальмор]]", Section: "work"},
+		{Key: "Прізвисько", Value: "Рудий", Section: "looks"},
+		{Key: "211-224", Value: "Вільний найманець", Section: "work"},
+	}
+	if _, err := v.SaveSource("Койл", src); err != nil {
+		t.Fatal(err)
+	}
+	raw, _ := os.ReadFile(filepath.Join(v.Root(), "Койл.md"))
+	if !strings.Contains(string(raw), "infobox:\n  born: \"190\"\n  work:\n    224-: \"[[Вальмор]]\"\n    211-224: Вільний найманець\n  looks:\n    Прізвисько: Рудий\n") {
+		t.Errorf("file:\n%s", raw)
+	}
+	view, _ = v.Get("Койл")
+	got = nil
+	for _, r := range view.Infobox {
+		got = append(got, r.Label)
+	}
+	if g := strings.Join(got, " | "); g != "Народження | Зовнішність | Прізвисько | Діяльність | 224- | 211-224" {
+		t.Errorf("rows after save: %s", g)
 	}
 }

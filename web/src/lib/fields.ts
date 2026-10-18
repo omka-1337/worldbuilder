@@ -15,7 +15,8 @@ export function fieldLabel(world: World | null | undefined, type: string, key: s
     const f = types[k].fields.find((f) => f.key === key && f.type !== 'section')
     if (f) return f.label
   }
-  if (!key || !/^[\p{L}\p{N}]+(-[\p{L}\p{N}]+)*$/u.test(key) || key !== key.toLowerCase()) return key
+  // Typed by the author: kept as is ("211-224" stays a range).
+  if (!/^\p{L}[\p{L}\p{N}]*(-[\p{L}\p{N}]+)*$/u.test(key) || key !== key.toLowerCase()) return key
   const words = key.replaceAll('-', ' ')
   return words[0].toUpperCase() + words.slice(1)
 }

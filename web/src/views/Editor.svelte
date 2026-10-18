@@ -26,7 +26,10 @@
   let name = $state('')
   let type = $state('')
   let values = $state<Record<string, string>>({})
-  let extras = $state<string[]>([]) // fields of this article only, not of its type
+  // Fields of this article only, not of its type, in order. Each can sit in
+  // one of the type's sections ('' for none: shown last).
+  type Own = { key: string; section: string; value: string }
+  let extras = $state<Own[]>([])
   let aliases = $state<string[]>([])
   let categories = $state<string[]>([])
   let body = $state('')
@@ -63,10 +66,8 @@
       for (const f of src?.infobox ?? []) {
         if (f.key === 'image') image = f.value
         else if (f.key === 'caption') caption = f.value
-        else {
-          values[f.key] = f.value
-          if (!known.has(f.key)) extras.push(f.key)
-        }
+        else if (f.section || !known.has(f.key)) extras.push({ key: f.key, section: f.section ?? '', value: f.value })
+        else values[f.key] = f.value
       }
       saved = JSON.stringify(build())
     } catch (e) {
@@ -86,7 +87,8 @@
     const infobox = [
       { key: 'image', value: image },
       { key: 'caption', value: image ? caption : '' },
-      ...[...schema.map((f) => f.key), ...extras].map((key) => ({ key, value: values[key] ?? '' })),
+      ...schema.map((f) => ({ key: f.key, value: values[f.key] ?? '' })),
+      ...extras.map((e) => ({ key: e.key, value: e.value, section: e.section || undefined })),
     ]
     return { title: name.trim(), type, aliases, categories, infobox, body }
   }
@@ -104,7 +106,7 @@
   // Values typed into the old type's fields go away if the type changes.
   const dropped = $derived.by(() => {
     if (type === loadedType) return []
-    const now = new Set([...schema.map((f) => f.key), ...extras])
+    const now = new Set([...schema.map((f) => f.key), ...extras.filter((e) => !e.section).map((e) => e.key)])
     return (store.world?.types[loadedType]?.fields ?? []).filter((f) => !now.has(f.key) && values[f.key]?.trim())
   })
 
@@ -112,12 +114,64 @@
     e.preventDefault()
     const key = newField.trim()
     if (!key) return
-    if (!extras.includes(key) && !schema.some((f) => f.key === key)) extras.push(key)
+    if (!extras.some((e) => e.key === key && !e.section) && !schema.some((f) => f.key === key))
+      extras.push({ key, section: '', value: '' })
     newField = ''
     addingField = false
     await tick()
-    document.getElementById(`field-${key}`)?.focus()
+    document.getElementById(ownId({ key, section: '' }))?.focus()
   }
+
+  // --- own fields in sections -------------------------------------------
+
+  // The type's fields in groups: what comes before the first section, then
+  // each section with its fields.
+  const groups = $derived.by(() => {
+    const out: { key: string; label: string; fields: FieldDef[] }[] = [{ key: '', label: '', fields: [] }]
+    for (const f of schema) {
+      if (f.type === 'section') out.push({ key: f.key, label: f.label, fields: [] })
+      else out.at(-1)!.fields.push(f)
+    }
+    return out
+  })
+
+  // Where own fields can go, top to bottom: the type's sections, sections
+  // the type no longer has but some field still sits in, then outside any
+  // section, which the article shows last.
+  const places = $derived.by(() => {
+    const keys = groups.map((g) => g.key).filter(Boolean)
+    for (const e of extras) if (e.section && !keys.includes(e.section)) keys.push(e.section)
+    return [...keys, '']
+  })
+
+  const ownIn = (section: string) => extras.filter((e) => e.section === section)
+  const ownId = (e: Pick<Own, 'key' | 'section'>) => `own-${e.section}-${e.key}`
+
+  // Up and down step through the fields of a section and on into the
+  // neighbouring one, so a field can be moved anywhere.
+  async function moveOwn(e: Own, dir: -1 | 1) {
+    const mates = ownIn(e.section)
+    const i = mates.indexOf(e)
+    const swapWith = mates[i + dir]
+    const from = extras.indexOf(e)
+    if (swapWith) {
+      const to = extras.indexOf(swapWith)
+      ;[extras[from], extras[to]] = [extras[to], extras[from]]
+    } else {
+      const p = places.indexOf(e.section) + dir
+      if (p < 0 || p >= places.length || ownIn(places[p]).some((o) => o.key === e.key)) return
+      const [moved] = extras.splice(from, 1)
+      moved.section = places[p]
+      // Last of the section above, or first of the one below.
+      if (dir < 0) extras.push(moved)
+      else extras.unshift(moved)
+    }
+    await tick()
+    document.getElementById(ownId(e))?.focus()
+  }
+
+  const isFirst = (e: Own) => places.indexOf(e.section) === 0 && ownIn(e.section)[0] === e
+  const isLast = (e: Own) => e.section === '' && ownIn('').at(-1) === e
 
   async function startAddingField() {
     addingField = true
@@ -251,36 +305,33 @@
       {#if schema.length || extras.length}
         <div class="group">
           <span class="label">Інфобокс</span>
-          {#each schema as f (f.key)}
-            {#if f.type === 'section'}
-              <span class="section">{f.label}</span>
-            {:else}
-            <label class="field">
-              <span>{f.label}</span>
-              <input
-                id="field-{f.key}"
-                bind:value={values[f.key]}
-                use:linkComplete={pages}
-                autocomplete="off"
-                placeholder={f.type === 'date' ? `Напр. ${exampleDate(store.world)}` : ''}
-              />
-              {#if f.type === 'date' && values[f.key]?.trim() && !hasYear(values[f.key])}
-                <small class="warn">Без числа року стаття не з'явиться на таймлайні.</small>
-              {/if}
-            </label>
-            {/if}
+          {#each groups as g (g.key)}
+            {#if g.key}<span class="section">{g.label}</span>{/if}
+            {#each g.fields as f (f.key)}
+              <label class="field">
+                <span>{f.label}</span>
+                <input
+                  id="field-{f.key}"
+                  bind:value={values[f.key]}
+                  use:linkComplete={pages}
+                  autocomplete="off"
+                  placeholder={f.type === 'date' ? `Напр. ${exampleDate(store.world)}` : ''}
+                />
+                {#if f.type === 'date' && values[f.key]?.trim() && !hasYear(values[f.key])}
+                  <small class="warn">Без числа року стаття не з'явиться на таймлайні.</small>
+                {/if}
+              </label>
+            {/each}
+            {#if g.key}{@render ownFields(g.key)}{/if}
           {/each}
-          {#each extras as key, i (key)}
-            <div class="field">
-              <label for="field-{key}">{fieldLabel(store.world, type, key)}</label>
-              <div class="with-remove">
-                <input id="field-{key}" bind:value={values[key]} use:linkComplete={pages} autocomplete="off" />
-                <button class="icon" onclick={() => extras.splice(i, 1)} aria-label="Прибрати поле «{fieldLabel(store.world, type, key)}»">
-                  <Icon name="trash" size={15} />
-                </button>
-              </div>
-            </div>
+          {#each places.filter((p) => p && !groups.some((g) => g.key === p)) as p (p)}
+            <span class="section">{fieldLabel(store.world, type, p)}</span>
+            {@render ownFields(p)}
           {/each}
+          {#if ownIn('').length}
+            {#if places.length > 1}<span class="section loose">Поза розділами</span>{/if}
+            {@render ownFields('')}
+          {/if}
         </div>
       {/if}
 
@@ -314,6 +365,27 @@
     </p>
   </div>
 {/if}
+
+{#snippet ownFields(section: string)}
+  {#each ownIn(section) as e (e.key)}
+    {@const label = fieldLabel(store.world, type, e.key)}
+    <div class="field own">
+      <label for={ownId(e)}>{label}</label>
+      <div class="with-remove">
+        <input id={ownId(e)} bind:value={e.value} use:linkComplete={pages} autocomplete="off" />
+        <button class="icon" onclick={() => moveOwn(e, -1)} disabled={isFirst(e)} title="Вище" aria-label="Перемістити «{label}» вище">
+          <Icon name="up" size={15} />
+        </button>
+        <button class="icon" onclick={() => moveOwn(e, 1)} disabled={isLast(e)} title="Нижче" aria-label="Перемістити «{label}» нижче">
+          <Icon name="down" size={15} />
+        </button>
+        <button class="icon" onclick={() => extras.splice(extras.indexOf(e), 1)} title="Прибрати" aria-label="Прибрати поле «{label}»">
+          <Icon name="trash" size={15} />
+        </button>
+      </div>
+    </div>
+  {/each}
+{/snippet}
 
 <style>
   /* Name and actions on top; below, the text and the properties panel share
@@ -423,7 +495,15 @@
   }
   .with-remove {
     display: flex;
-    gap: 0.25rem;
+    gap: 0.1rem;
+  }
+  .with-remove input {
+    flex: 1;
+    min-width: 0;
+  }
+  .section.loose {
+    font-weight: 600;
+    color: var(--text-muted);
   }
   .icon {
     display: grid;

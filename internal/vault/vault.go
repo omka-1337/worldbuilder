@@ -377,14 +377,13 @@ func (v *Vault) Get(title string) (*View, error) {
 	}
 	view.Location, view.Children = v.location(p, v.collator())
 
-	// Infobox rows follow the order declared by the type, then any extra
-	// fields in file order.
+	// Infobox rows follow the type: each section shows its fields, then the
+	// article's own fields placed in it. Own fields in a section the type no
+	// longer has follow under that section's name, and own fields outside
+	// any section come last.
 	def := v.world.Types[p.Type]
 	view.TypeLabel = def.Label
-	values := map[string]string{}
-	for _, f := range p.Infobox {
-		values[f.Key] = f.Value
-	}
+	values := p.typeValues()
 	if img := values[ImageKey]; img != "" {
 		view.Image = v.renderInline(img)
 		view.Caption = v.renderInline(values[CaptionKey])
@@ -393,26 +392,62 @@ func (v *Vault) Get(title string) (*View, error) {
 		view.Banner, view.BannerY = v.imageURL(p.Banner), p.BannerY
 	}
 	used := map[string]bool{ImageKey: true, CaptionKey: true}
-	var section *FieldDef // shown only once a field under it has a value
-	for i, fd := range def.Fields {
+	for _, fd := range def.Fields {
 		used[fd.Key] = true
+	}
+	own := map[string][]Field{} // by section key
+	var ownOrder []string
+	var loose []Field
+	for _, f := range p.Infobox {
+		switch {
+		case f.Value == "":
+		case f.Section != "":
+			if _, ok := own[f.Section]; !ok {
+				ownOrder = append(ownOrder, f.Section)
+			}
+			own[f.Section] = append(own[f.Section], f)
+		case !used[f.Key]:
+			loose = append(loose, f)
+		}
+	}
+	ownRows := func(fields []Field) []Row {
+		var rows []Row
+		for _, f := range fields {
+			rows = append(rows, Row{Label: v.world.fieldLabel(p.Type, f.Key), HTML: v.renderInline(f.Value)})
+		}
+		return rows
+	}
+	// A section's heading shows only when something under it has a value.
+	group := func(label string, rows []Row) {
+		if len(rows) == 0 {
+			return
+		}
+		if label != "" {
+			view.Infobox = append(view.Infobox, Row{Label: label, Section: true})
+		}
+		view.Infobox = append(view.Infobox, rows...)
+	}
+	var label, key string
+	var rows []Row
+	for _, fd := range def.Fields {
 		if fd.Type == "section" {
-			section = &def.Fields[i]
+			group(label, append(rows, ownRows(own[key])...))
+			delete(own, key)
+			label, key, rows = fd.Label, fd.Key, nil
 			continue
 		}
 		if val := values[fd.Key]; val != "" {
-			if section != nil {
-				view.Infobox = append(view.Infobox, Row{Label: section.Label, Section: true})
-				section = nil
-			}
-			view.Infobox = append(view.Infobox, Row{Label: fd.Label, HTML: v.renderInline(val)})
+			rows = append(rows, Row{Label: fd.Label, HTML: v.renderInline(val)})
 		}
 	}
-	for _, f := range p.Infobox {
-		if !used[f.Key] && f.Value != "" {
-			view.Infobox = append(view.Infobox, Row{Label: v.world.fieldLabel(p.Type, f.Key), HTML: v.renderInline(f.Value)})
+	group(label, append(rows, ownRows(own[key])...))
+	delete(own, key)
+	for _, k := range ownOrder {
+		if fields, ok := own[k]; ok && k != "" {
+			group(v.world.fieldLabel(p.Type, k), ownRows(fields))
 		}
 	}
+	view.Infobox = append(view.Infobox, ownRows(loose)...)
 	return view, nil
 }
 

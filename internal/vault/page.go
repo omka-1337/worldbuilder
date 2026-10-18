@@ -33,10 +33,30 @@ type Page struct {
 	searchText string   // searchRaw lowercased, for matching
 }
 
-// Field is one infobox row as written in the frontmatter.
+// Field is one infobox row as written in the frontmatter. An article's own
+// field can sit in one of its type's sections: it is then written nested
+// under the section's key,
+//
+//	infobox:
+//	  діяльність:
+//	    "211-224": Найманець
 type Field struct {
-	Key   string `json:"key"`
-	Value string `json:"value"`
+	Key     string `json:"key"`
+	Value   string `json:"value"`
+	Section string `json:"section,omitempty"` // the section's key, for a field nested in one
+}
+
+// typeValues maps the article's fields outside sections by key: the
+// fields its type can define. Fields nested in a section are always the
+// article's own.
+func (p *Page) typeValues() map[string]string {
+	values := map[string]string{}
+	for _, f := range p.Infobox {
+		if f.Section == "" {
+			values[f.Key] = f.Value
+		}
+	}
+	return values
 }
 
 type frontmatter struct {
@@ -63,7 +83,8 @@ func parsePage(rel string, raw []byte) (*Page, error) {
 
 	var fm frontmatter
 	if len(fmRaw) > 0 {
-		if err := yaml.Unmarshal(fmRaw, &fm); err != nil {
+		// Ordered maps keep a section's own fields in the order written.
+		if err := yaml.UnmarshalWithOptions(fmRaw, &fm, yaml.UseOrderedMap()); err != nil {
 			return nil, &ParseError{Path: rel, Err: err}
 		}
 	}
@@ -87,10 +108,14 @@ func parsePage(rel string, raw []byte) (*Page, error) {
 		p.BannerY = y
 	}
 	for _, item := range fm.Infobox {
-		p.Infobox = append(p.Infobox, Field{
-			Key:   fmt.Sprint(item.Key),
-			Value: formatValue(item.Value),
-		})
+		key := fmt.Sprint(item.Key)
+		if nested, ok := item.Value.(yaml.MapSlice); ok {
+			for _, sub := range nested {
+				p.Infobox = append(p.Infobox, Field{Key: fmt.Sprint(sub.Key), Value: formatValue(sub.Value), Section: key})
+			}
+			continue
+		}
+		p.Infobox = append(p.Infobox, Field{Key: key, Value: formatValue(item.Value)})
 	}
 
 	var search strings.Builder

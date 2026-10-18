@@ -129,7 +129,7 @@ export interface Source {
   type: string
   aliases: string[]
   categories: string[]
-  infobox: { key: string; value: string }[]
+  infobox: { key: string; value: string; section?: string }[] // section: the type's section an own field sits in
   body: string
   imageUrl?: string // preview of the infobox image, when loading
 }
