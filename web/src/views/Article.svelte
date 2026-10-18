@@ -2,6 +2,7 @@
   import { tick } from 'svelte'
   import { api, key, NotFoundError, pageHref, editHref, categoryHref, type PageView, type Wanted } from '../lib/api'
   import { store } from '../lib/store.svelte'
+  import { openLightbox, type Shot } from '../lib/lightbox.svelte'
 
   let { title }: { title: string } = $props()
 
@@ -29,6 +30,26 @@
       const wanted = await api.wanted()
       missing = wanted.find((w) => key(w.title) === key(t)) ?? { title: t, from: [] }
     }
+  }
+
+  // A click on any picture (the banner, the infobox's, one in the text)
+  // opens the viewer on it, with the article's pictures to step through in
+  // the order they appear.
+  let root = $state<HTMLElement>()
+  function onPictureClick(e: MouseEvent) {
+    const target = e.target as HTMLElement
+    const picture = target.closest<HTMLElement>('.banner, .ib-image img, .prose img')
+    if (!picture || !root || target.closest('a')) return
+    const shots: Shot[] = []
+    let index = 0
+    for (const el of root.querySelectorAll<HTMLElement>('.banner, .ib-image img, .prose img')) {
+      const url = el instanceof HTMLImageElement ? el.getAttribute('src') : view?.banner
+      if (!url) continue
+      if (el === picture) index = shots.length
+      const caption = el.closest('.ib-image') ? root.querySelector('.ib-image figcaption')?.textContent?.trim() : el.getAttribute('alt')
+      shots.push({ url, caption: caption || undefined })
+    }
+    openLightbox(shots, index)
   }
 
   function scrollToHash() {
@@ -72,6 +93,8 @@
   {/if}
   <p><a class="button primary" href={editHref(title)}>Створити статтю</a></p>
 {:else if view}
+  <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
+  <div class="pictures" bind:this={root} onclick={onPictureClick}>
   {#if view.banner}
     <div class="banner" style:background-image="url('{view.banner}')" style:background-position-y="{(view.bannerY ?? 0.5) * 100}%"></div>
   {/if}
@@ -175,6 +198,7 @@
         </ol>
       </nav>
     {/if}
+  </div>
   </div>
   {#if view.backlinks.length === 0 && !view.categories.length}
     <p class="hint muted">
@@ -310,6 +334,11 @@
   }
   .ib-section:first-child {
     margin-top: -0.4rem;
+  }
+  .banner,
+  .ib-image :global(img),
+  .prose :global(img) {
+    cursor: zoom-in;
   }
   .banner {
     height: clamp(9rem, 22vh, 15rem);

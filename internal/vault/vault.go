@@ -194,7 +194,7 @@ func (v *Vault) readPage(rel string) (*Page, error) {
 		return nil, err
 	}
 	p.ModTime = info.ModTime()
-	p.links = v.extractLinks(p)
+	p.links, p.images = v.extractLinks(p)
 	return p, nil
 }
 

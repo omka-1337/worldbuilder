@@ -80,25 +80,42 @@ func (v *Vault) renderInline(s string) string {
 }
 
 // extractLinks returns the targets of every wikilink in the body and the
-// infobox. Image embeds are not links between articles.
-func (v *Vault) extractLinks(p *Page) []string {
-	var links []string
+// infobox, and apart from them the images embedded there (and the banner),
+// in the order they appear: image embeds are not links between articles.
+func (v *Vault) extractLinks(p *Page) (links, images []string) {
+	if p.Banner != "" {
+		images = append(images, embedName(p.Banner))
+	}
 	collect := func(src []byte) {
 		doc := v.md.Parser().Parse(text.NewReader(src))
 		_ = ast.Walk(doc, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
 			if l, ok := n.(*wikilink.Node); ok && entering {
-				if target := wikiTarget(l); target != "" && !isImage(target) {
+				switch target := wikiTarget(l); {
+				case target == "":
+				case isImage(target):
+					if l.Embed {
+						images = append(images, target)
+					}
+				default:
 					links = append(links, target)
 				}
 			}
 			return ast.WalkContinue, nil
 		})
 	}
+	// The infobox picture comes first, as the article shows it.
+	for _, f := range p.Infobox {
+		if f.Key == ImageKey {
+			collect([]byte(f.Value))
+		}
+	}
 	collect(p.Body)
 	for _, f := range p.Infobox {
-		collect([]byte(f.Value))
+		if f.Key != ImageKey {
+			collect([]byte(f.Value))
+		}
 	}
-	return links
+	return links, images
 }
 
 // pageURL is the in-app address of an article.

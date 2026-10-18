@@ -6,6 +6,8 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"slices"
+	"sort"
 	"strings"
 )
 
@@ -71,14 +73,71 @@ func (v *Vault) SaveImage(title string, data []byte) (name, url string, err erro
 // imageURL resolves an infobox image value like ![[name.png]] to its URL,
 // or "" when it names no known file. Callers hold v.mu.
 func (v *Vault) imageURL(value string) string {
+	if rel, ok := v.attachment(embedName(value)); ok {
+		return v.fileURL(rel)
+	}
+	return ""
+}
+
+// embedName is the file name in an embed such as ![[map.png|300]].
+func embedName(value string) string {
 	name := strings.TrimSpace(value)
 	name = strings.TrimPrefix(name, "!")
 	name = strings.TrimSuffix(strings.TrimPrefix(name, "[["), "]]")
 	if i := strings.IndexByte(name, '|'); i >= 0 {
 		name = name[:i]
 	}
-	if rel, ok := v.attachment(strings.TrimSpace(name)); ok {
-		return v.fileURL(rel)
+	return strings.TrimSpace(name)
+}
+
+// ImageInfo is a picture of the world and the articles showing it.
+type ImageInfo struct {
+	Name  string   `json:"name"`
+	URL   string   `json:"url"`
+	Pages []string `json:"pages"`
+}
+
+// Images lists the world's pictures for browsing them all: those in
+// articles first, grouped by the first article (by title) that shows them
+// and in its order, then the ones no article uses, by name.
+func (v *Vault) Images() []ImageInfo {
+	v.mu.RLock()
+	defer v.mu.RUnlock()
+	pages := make([]*Page, 0, len(v.idx.pages))
+	for _, p := range v.idx.pages {
+		pages = append(pages, p)
 	}
-	return ""
+	c := v.collator()
+	sort.Slice(pages, func(i, j int) bool { return c.CompareString(pages[i].Title, pages[j].Title) < 0 })
+
+	out := []ImageInfo{}
+	at := map[string]int{} // by path
+	for _, p := range pages {
+		for _, name := range p.images {
+			rel, ok := v.attachment(name)
+			if !ok {
+				continue
+			}
+			i, seen := at[rel]
+			if !seen {
+				i = len(out)
+				at[rel] = i
+				out = append(out, ImageInfo{Name: path.Base(rel), URL: v.fileURL(rel), Pages: []string{}})
+			}
+			if !slices.Contains(out[i].Pages, p.Title) {
+				out[i].Pages = append(out[i].Pages, p.Title)
+			}
+		}
+	}
+	var unused []string
+	for _, rel := range v.idx.files {
+		if _, seen := at[rel]; !seen && isImage(rel) {
+			unused = append(unused, rel)
+		}
+	}
+	c.SortStrings(unused)
+	for _, rel := range unused {
+		out = append(out, ImageInfo{Name: path.Base(rel), URL: v.fileURL(rel), Pages: []string{}})
+	}
+	return out
 }

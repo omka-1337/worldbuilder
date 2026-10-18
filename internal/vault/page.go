@@ -29,6 +29,7 @@ type Page struct {
 
 	textLen    int      // characters in the body, how much has been written
 	links      []string // wikilink targets as written, body and infobox
+	images     []string // embedded image names as written, banner first
 	searchRaw  string   // title, aliases, infobox and body, for snippets
 	searchText string   // searchRaw lowercased, for matching
 }

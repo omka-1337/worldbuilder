@@ -1223,3 +1223,29 @@ infobox:
 		t.Errorf("rows after save: %s", g)
 	}
 }
+
+func TestImages(t *testing.T) {
+	files := map[string]string{}
+	for k, v := range fixture {
+		files[k] = v
+	}
+	files["map.png"] = string(tinyPNG)
+	files["portrait.png"] = string(tinyPNG)
+	files["unused.png"] = string(tinyPNG)
+	files["notes.txt"] = "not a picture"
+	files["Вальмор.md"] = "---\ntype: location\nbanner: \"![[map.png]]\"\ninfobox:\n  image: \"![[portrait.png]]\"\n---\nМапа: ![[map.png|300]] і [[Аедрін Сірий]].\n"
+	files["Аедрін Сірий.md"] = "Портрет: ![[portrait.png]], а це посилання: [[map.png]].\n"
+	v, err := Open(writeWorld(t, files), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got []string
+	for _, img := range v.Images() {
+		got = append(got, img.Name+"="+strings.Join(img.Pages, "+"))
+	}
+	// By the first article showing each, in its order (the infobox picture
+	// first); a plain link to a file is not showing it; unused ones last.
+	if g := strings.Join(got, " "); g != "portrait.png=Аедрін Сірий+Вальмор map.png=Вальмор unused.png=" {
+		t.Errorf("images = %s", g)
+	}
+}

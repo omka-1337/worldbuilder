@@ -4,6 +4,7 @@
   import { store, refresh, reset } from '../lib/store.svelte'
   import Sidebar from './Sidebar.svelte'
   import Dialogs from './Dialogs.svelte'
+  import Lightbox from './Lightbox.svelte'
   import Ribbon from './Ribbon.svelte'
   import Timeline from '../views/Timeline.svelte'
   import Types from '../views/Types.svelte'
@@ -86,6 +87,7 @@
   </main>
 {:else}
   <Dialogs />
+  <Lightbox />
   <div
     class="layout ribbon-{prefs.ribbon}"
     class:menu-open={menuOpen}

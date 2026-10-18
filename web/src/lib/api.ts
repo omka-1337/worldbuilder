@@ -255,6 +255,8 @@ export const api = {
   wanted: () => get<Wanted[]>(`${w()}/wanted`),
   timeline: () => get<Timeline>(`${w()}/timeline`),
   tree: () => get<TreeNode[]>(`${w()}/tree`),
+  // Every picture of the world with the articles showing it.
+  images: () => get<{ name: string; url: string; pages: string[] }[]>(`${w()}/images`),
   // Stores a picture for the article's infobox; returns the name to embed.
   async uploadImage(title: string, file: Blob): Promise<{ name: string; url: string }> {
     const r = await check(await fetch(`${w()}/images/${enc(title)}`, { method: 'POST', body: file }))

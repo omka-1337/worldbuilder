@@ -39,6 +39,7 @@ func New(lib *library.Library, ui fs.FS) http.Handler {
 	mux.HandleFunc("GET "+w+"/wanted", s.inWorld(s.wanted))
 	mux.HandleFunc("GET "+w+"/timeline", s.inWorld(s.timeline))
 	mux.HandleFunc("GET "+w+"/tree", s.inWorld(s.tree))
+	mux.HandleFunc("GET "+w+"/images", s.inWorld(s.images))
 	mux.HandleFunc("POST "+w+"/move", s.inWorld(s.move))
 	mux.HandleFunc("POST "+w+"/rename", s.inWorld(s.rename))
 	mux.HandleFunc("DELETE "+w+"/pages/{title...}", s.inWorld(s.deletePage))
@@ -160,6 +161,10 @@ func (s *server) wanted(w http.ResponseWriter, r *http.Request, v *vault.Vault) 
 
 func (s *server) timeline(w http.ResponseWriter, r *http.Request, v *vault.Vault) {
 	writeJSON(w, v.Timeline())
+}
+
+func (s *server) images(w http.ResponseWriter, r *http.Request, v *vault.Vault) {
+	writeJSON(w, v.Images())
 }
 
 func (s *server) tree(w http.ResponseWriter, r *http.Request, v *vault.Vault) {
