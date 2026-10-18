@@ -8,7 +8,7 @@
   import { askName, confirmAction } from '../lib/dialog.svelte'
   import { router, navigate, titleFrom } from '../lib/router.svelte'
   import { store, refresh } from '../lib/store.svelte'
-  import { drag, endDrag } from '../lib/drag.svelte'
+  import { drag, dragging, endDrag } from '../lib/drag.svelte'
 
   let query = $state('')
   let hits = $state<Hit[]>([])
@@ -127,6 +127,18 @@
     }
   }
 
+  async function moveFolder(folder: string, to: string) {
+    const name = folder.slice(folder.lastIndexOf('/') + 1)
+    try {
+      await api.moveFolder(folder, to)
+      if (to) expanded.add(to)
+      await refresh()
+      remapExpanded(folder, join(to, name))
+    } catch (e) {
+      fail(e, `Там уже є папка «${name}».`)
+    }
+  }
+
   const join = (folder: string, name: string) => (folder ? `${folder}/${name}` : name)
 
   function newArticle(folder: string) {
@@ -227,6 +239,9 @@
         { label: 'Створити папку', icon: 'folder-plus', run: () => newFolder(node.path) },
         'separator',
         { label: 'Перейменувати', icon: 'pencil', run: () => renameFolder(node) },
+        ...(node.path.includes('/')
+          ? [{ label: 'Перемістити на верхній рівень', icon: 'to-top' as const, run: () => moveFolder(node.path, '') }]
+          : []),
         'separator',
         { label: 'Видалити', icon: 'trash', danger: true, run: () => deleteFolder(node) },
       ]
@@ -260,7 +275,7 @@
        place, so nothing under the pointer moves. -->
   <div class="tree-head">
     <h2>Статті <span class="muted">{store.pages.length}</span></h2>
-    {#if drag.title}
+    {#if dragging()}
       <div
         class="root-drop"
         class:over={overRoot}
@@ -272,10 +287,11 @@
         ondragleave={() => (overRoot = false)}
         ondrop={(e) => {
           e.preventDefault()
-          const title = drag.title
+          const { title, folder } = drag
           overRoot = false
           endDrag()
-          move(title, '')
+          if (title) move(title, '')
+          else moveFolder(folder, '')
         }}
       >
         Сюди — на верхній рівень
@@ -294,9 +310,9 @@
     }}
   >
     {#if treeError}<p class="move-error">{treeError}</p>{/if}
-    <PageTree nodes={store.tree} {current} {expanded} onmove={move} onmenu={openMenu} />
-    {#if store.tree.length > 1 && !drag.title}
-      <p class="tip muted">Перетягніть статтю на іншу статтю чи папку, щоб перемістити. Права кнопка — меню.</p>
+    <PageTree nodes={store.tree} {current} {expanded} onmove={move} onmovefolder={moveFolder} onmenu={openMenu} />
+    {#if store.tree.length > 1 && !dragging()}
+      <p class="tip muted">Перетягніть статтю чи папку на іншу статтю чи папку, щоб перемістити. Права кнопка — меню.</p>
     {/if}
   </div>
 

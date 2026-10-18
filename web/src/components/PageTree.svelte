@@ -12,6 +12,7 @@
     current,
     expanded,
     onmove,
+    onmovefolder,
     onmenu,
   }: {
     nodes: TreeNode[]
@@ -19,6 +20,7 @@
     current: string // title of the open article
     expanded: SvelteSet<string> // paths of open groups
     onmove: (title: string, folder: string) => void
+    onmovefolder: (folder: string, to: string) => void
     onmenu: (e: MouseEvent, node: TreeNode) => void
   } = $props()
 
@@ -44,9 +46,10 @@
     e.preventDefault()
     e.stopPropagation()
     clearTimeout(openTimer)
-    const title = drag.title
+    const { title, folder } = drag
     endDrag()
-    onmove(title, n.path)
+    if (title) onmove(title, n.path)
+    else onmovefolder(folder, n.path)
   }
 </script>
 
@@ -59,16 +62,16 @@
         class="row"
         class:active={!!n.title && n.title === current}
         class:over={drag.over === n.path}
-        class:dragged={!!n.title && drag.title === n.title}
+        class:dragged={n.title ? drag.title === n.title : drag.folder === n.path}
         style:padding-left="{depth * 0.9 + 0.15}rem"
-        draggable={!folder}
+        draggable="true"
         role="treeitem"
         aria-selected={!!n.title && n.title === current}
         aria-expanded={n.children?.length ? open : undefined}
         tabindex="-1"
         ondragstart={(e) => {
           e.dataTransfer!.effectAllowed = 'move'
-          e.dataTransfer!.setData('text/plain', n.title ?? '')
+          e.dataTransfer!.setData('text/plain', n.title ?? n.name)
           startDrag(n)
         }}
         ondragend={endDrag}
@@ -101,7 +104,7 @@
         {/if}
       </div>
       {#if open && n.children?.length}
-        <Self nodes={n.children} depth={depth + 1} {current} {expanded} {onmove} {onmenu} />
+        <Self nodes={n.children} depth={depth + 1} {current} {expanded} {onmove} {onmovefolder} {onmenu} />
       {/if}
     </li>
   {/each}

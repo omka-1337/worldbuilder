@@ -248,6 +248,42 @@ func (v *Vault) RenameFolder(folder, name string) (string, error) {
 	return to, v.rescanLocked()
 }
 
+// MoveFolder puts a plain folder, with everything in it, into folder dest
+// ("" for the top level, or an article's folder) and returns its new path.
+// An article's folder follows its article instead, through Move.
+func (v *Vault) MoveFolder(folder, dest string) (string, error) {
+	v.mu.Lock()
+	defer v.mu.Unlock()
+	dir, err := cleanFolder(folder)
+	if err != nil || dir == "." || !isDir(v.abs(dir)) {
+		return "", ErrNotFound
+	}
+	if _, ok := v.pageAt(dir); ok {
+		return "", &InvalidError{"this folder belongs to an article; move the article"}
+	}
+	to, err := cleanFolder(dest)
+	if err != nil {
+		return "", err
+	}
+	if to == dir || strings.HasPrefix(to, dir+"/") {
+		return "", &InvalidError{"a folder cannot go inside itself"}
+	}
+	target := path.Join(to, path.Base(dir))
+	if target == dir {
+		return dir, nil
+	}
+	if fileExists(v.abs(target)) {
+		return "", ErrExists
+	}
+	if err := os.MkdirAll(v.abs(to), 0o755); err != nil {
+		return "", err
+	}
+	if err := os.Rename(v.abs(dir), v.abs(target)); err != nil {
+		return "", err
+	}
+	return target, v.rescanLocked()
+}
+
 // DeleteFolder moves a plain folder, with everything in it, to .trash.
 func (v *Vault) DeleteFolder(folder string) error {
 	v.mu.Lock()

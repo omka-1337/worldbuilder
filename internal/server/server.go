@@ -44,6 +44,7 @@ func New(lib *library.Library, ui fs.FS) http.Handler {
 	mux.HandleFunc("DELETE "+w+"/pages/{title...}", s.inWorld(s.deletePage))
 	mux.HandleFunc("POST "+w+"/folders", s.inWorld(s.createFolder))
 	mux.HandleFunc("POST "+w+"/folders/rename", s.inWorld(s.renameFolder))
+	mux.HandleFunc("POST "+w+"/folders/move", s.inWorld(s.moveFolder))
 	mux.HandleFunc("POST "+w+"/folders/delete", s.inWorld(s.deleteFolder))
 	mux.HandleFunc("PUT "+w+"/calendar", s.inWorld(s.saveCalendar))
 	mux.HandleFunc("POST "+w+"/calendar/preview", s.inWorld(s.previewCalendar))
@@ -170,6 +171,7 @@ type treeRequest struct {
 	NewTitle string `json:"newTitle"`
 	Folder   string `json:"folder"` // a folder path; empty: the top level
 	Name     string `json:"name"`
+	To       string `json:"to"` // where a folder moves; empty: the top level
 }
 
 func decodeTree(w http.ResponseWriter, r *http.Request) (treeRequest, bool) {
@@ -214,6 +216,13 @@ func (s *server) createFolder(w http.ResponseWriter, r *http.Request, v *vault.V
 func (s *server) renameFolder(w http.ResponseWriter, r *http.Request, v *vault.Vault) {
 	if req, ok := decodeTree(w, r); ok {
 		_, err := v.RenameFolder(req.Folder, req.Name)
+		s.treeResult(w, v, err)
+	}
+}
+
+func (s *server) moveFolder(w http.ResponseWriter, r *http.Request, v *vault.Vault) {
+	if req, ok := decodeTree(w, r); ok {
+		_, err := v.MoveFolder(req.Folder, req.To)
 		s.treeResult(w, v, err)
 	}
 }

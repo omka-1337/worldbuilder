@@ -270,6 +270,9 @@ export const api = {
   },
   createFolder: (folder: string) => send<TreeNode[]>('POST', `${w()}/folders`, { folder }),
   renameFolder: (folder: string, name: string) => send<TreeNode[]>('POST', `${w()}/folders/rename`, { folder, name }),
+  // Puts a plain folder, with everything in it, into another folder ("" for
+  // the top level).
+  moveFolder: (folder: string, to: string) => send<TreeNode[]>('POST', `${w()}/folders/move`, { folder, to }),
   deleteFolder: (folder: string) => send<TreeNode[]>('POST', `${w()}/folders/delete`, { folder }),
   types: () => get<TypeInfo[]>(`${w()}/types`),
   saveCalendar: (calendar: Calendar) => send<World>('PUT', `${w()}/calendar`, calendar),

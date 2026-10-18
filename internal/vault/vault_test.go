@@ -1080,6 +1080,36 @@ func TestFolders(t *testing.T) {
 		t.Error("old title does not lead to the renamed article")
 	}
 
+	// Plain folders move with what is inside them, into other folders and
+	// articles and back to the top; never into themselves, and an article's
+	// folder only moves with its article.
+	if _, err := v.CreateFolder("Архів"); err != nil {
+		t.Fatal(err)
+	}
+	if to, err := v.MoveFolder("Герої", "Архів"); err != nil || to != "Архів/Герої" || !exists("Архів/Герої/Маги/Мерлін.md") {
+		t.Fatalf("move into a folder: %q, %v", to, err)
+	}
+	if to, err := v.MoveFolder("Архів/Герої", "Вальмор Новий"); err != nil || !exists("Вальмор Новий/Герої/Маги/Мерлін.md") {
+		t.Fatalf("move into an article: %q, %v", to, err)
+	}
+	if view, _ := v.Get("Мерлін"); view == nil || len(view.Location) != 3 || view.Location[0].Title != "Вальмор Новий" {
+		t.Errorf("location after moving into an article: %+v", view)
+	}
+	if to, err := v.MoveFolder("Вальмор Новий/Герої", ""); err != nil || to != "Герої" || !exists("Герої/Маги/Мерлін.md") {
+		t.Fatalf("move to the top: %q, %v", to, err)
+	}
+	if _, err := v.MoveFolder("Герої", "Герої/Маги"); !errors.As(err, new(*InvalidError)) {
+		t.Errorf("into itself: %v", err)
+	}
+	if _, err := v.MoveFolder("Вальмор Новий", "Архів"); !errors.As(err, new(*InvalidError)) {
+		t.Errorf("an article's folder: %v", err)
+	}
+	v.CreateFolder("Архів/Герої")
+	if _, err := v.MoveFolder("Герої", "Архів"); !errors.Is(err, ErrExists) {
+		t.Errorf("onto a folder of the same name: %v", err)
+	}
+	os.Remove(filepath.Join(v.Root(), "Архів", "Герої"))
+
 	// Deleting goes to .trash, nothing is lost; a second one with the same
 	// name gets its own place there.
 	if err := v.Delete("Мерлін"); err != nil {
