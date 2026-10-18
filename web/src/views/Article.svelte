@@ -84,6 +84,7 @@
               {#if c.title}<a href={pageHref(c.title)}>{c.name}</a>{:else}<span>{c.name}</span>{/if}
               <span class="sep" aria-hidden="true">›</span>
             {/each}
+            <span class="here" aria-current="page">{view.title}</span>
           </nav>
         {/if}
         <div class="title-row">
@@ -201,6 +202,9 @@
   }
   .crumbs .sep {
     opacity: 0.6;
+  }
+  .crumbs .here {
+    color: var(--text);
   }
   .children {
     margin-bottom: 1rem;
