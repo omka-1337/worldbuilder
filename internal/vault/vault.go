@@ -230,11 +230,12 @@ func (v *Vault) World() World {
 type Summary struct {
 	Title      string   `json:"title"`
 	Type       string   `json:"type,omitempty"`
+	Aliases    []string `json:"aliases"`
 	Categories []string `json:"categories"`
 }
 
 func summarize(p *Page) Summary {
-	return Summary{Title: p.Title, Type: p.Type, Categories: nonNil(p.Categories)}
+	return Summary{Title: p.Title, Type: p.Type, Aliases: nonNil(p.Aliases), Categories: nonNil(p.Categories)}
 }
 
 // List returns every page, sorted by title in the world's language.
@@ -341,22 +342,36 @@ func (v *Vault) Save(title string, content []byte) (string, error) {
 	v.mu.Lock()
 	defer v.mu.Unlock()
 
-	var rel string
 	if p, ok := v.lookup(title); ok {
-		rel = p.Path
-	} else {
-		rel = fileNameFor(title)
-		if _, err := os.Stat(filepath.Join(v.root, rel)); err == nil {
-			return "", ErrExists
-		}
+		return v.writePage(p.Path, "", content)
 	}
+	rel := fileNameFor(title)
+	if fileExists(filepath.Join(v.root, rel)) {
+		return "", ErrExists
+	}
+	return v.writePage(rel, "", content)
+}
 
+// writePage writes content to rel and re-indexes it. If old is set and
+// differs, that file is the page's previous location and is removed.
+// Callers hold v.mu.
+func (v *Vault) writePage(rel, old string, content []byte) (string, error) {
 	// Parse first so malformed frontmatter is rejected without touching disk.
 	if _, err := parsePage(rel, content); err != nil {
 		return "", err
 	}
 	if err := writeAtomic(filepath.Join(v.root, filepath.FromSlash(rel)), content); err != nil {
 		return "", err
+	}
+	if old != "" && old != rel {
+		// On a case-insensitive file system a case-only rename already
+		// replaced the old file; removing it would delete the new one.
+		if !sameFile(filepath.Join(v.root, old), filepath.Join(v.root, rel)) {
+			if err := os.Remove(filepath.Join(v.root, filepath.FromSlash(old))); err != nil {
+				return "", err
+			}
+		}
+		delete(v.idx.pages, old)
 	}
 	page, err := v.readPage(rel)
 	if err != nil {
@@ -365,6 +380,17 @@ func (v *Vault) Save(title string, content []byte) (string, error) {
 	v.idx.pages[rel] = page
 	v.link(v.idx)
 	return page.Title, nil
+}
+
+func fileExists(name string) bool {
+	_, err := os.Stat(name)
+	return err == nil
+}
+
+func sameFile(a, b string) bool {
+	ia, errA := os.Stat(a)
+	ib, errB := os.Stat(b)
+	return errA == nil && errB == nil && os.SameFile(ia, ib)
 }
 
 func writeAtomic(name string, data []byte) error {

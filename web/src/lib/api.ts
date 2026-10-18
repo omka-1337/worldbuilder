@@ -35,6 +35,7 @@ export interface WorldInfo {
 export interface Summary {
   title: string
   type?: string
+  aliases: string[]
   categories: string[]
 }
 
@@ -63,6 +64,8 @@ export interface PageView {
 // An article as the editor form sees it; the server turns it into the file.
 export interface Source {
   exists: boolean
+  create?: boolean // on save: fail rather than overwrite an existing article
+  title: string // on save: a different title renames the article
   type: string
   aliases: string[]
   categories: string[]
@@ -102,11 +105,19 @@ export interface TimelineYear {
   entries: TimelineEntry[]
 }
 
-export class NotFoundError extends Error {}
+export class HttpError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+  ) {
+    super(message)
+  }
+}
+export class NotFoundError extends HttpError {}
 
 async function check(r: Response): Promise<Response> {
-  if (r.status === 404) throw new NotFoundError(r.url)
-  if (!r.ok) throw new Error((await r.text()).trim() || r.statusText)
+  if (r.status === 404) throw new NotFoundError(r.url, 404)
+  if (!r.ok) throw new HttpError((await r.text()).trim() || r.statusText, r.status)
   return r
 }
 

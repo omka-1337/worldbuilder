@@ -36,8 +36,11 @@ Documents/Worldbuilder/
 Every `.md` file in a world (outside hidden folders) is an article. The file
 name is the title unless the frontmatter sets `title`. In the app, articles
 are edited through a form — type, infobox fields, other names, categories —
-next to the text; the frontmatter below is what the form writes. Files can
-also be edited in any editor; changes are picked up automatically.
+next to the text; the frontmatter below is what the form writes. Typing
+`[[` suggests article titles and aliases. Renaming an article moves its file
+and keeps the old title as an alias, as Wikipedia does, so links keep
+working. Files can also be edited in any editor; changes are picked up
+automatically.
 
 ```markdown
 ---

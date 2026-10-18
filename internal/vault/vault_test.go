@@ -141,8 +141,8 @@ func TestLinksAndHeadings(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(view.HTML, `class="wikilink new"`) {
-		t.Error("missing page should render as a red link")
+	if !strings.Contains(view.HTML, `class="wikilink new" href="/edit/`) {
+		t.Error("missing page should render as a red link to the editor")
 	}
 	if !strings.Contains(view.HTML, `href="#%D1%81%D0%BF%D0%B0%D0%B4%D1%89%D0%B8%D0%BD%D0%B0"`) {
 		t.Errorf("same-page fragment link not rendered: %s", view.HTML)
@@ -381,5 +381,55 @@ func TestSourceRoundTrip(t *testing.T) {
 	}
 	if missing := v.Source("Немає"); missing.Exists {
 		t.Error("missing page reported as existing")
+	}
+}
+
+func TestSaveSourceCreateAndRename(t *testing.T) {
+	v := openFixture(t)
+
+	// Creating never overwrites, whether the title is a page or an alias.
+	for _, title := range []string{"Вальмор", "сірий вовк"} {
+		if _, err := v.SaveSource(title, Source{Create: true, Title: title, Body: "x"}); !errors.Is(err, ErrExists) {
+			t.Errorf("create %q: %v", title, err)
+		}
+	}
+
+	// Renaming moves the file and keeps the old title as an alias.
+	src := v.Source("Вальмор")
+	src.Title = "Вальмор-на-Попелі"
+	title, err := v.SaveSource("Вальмор", src)
+	if err != nil || title != "Вальмор-на-Попелі" {
+		t.Fatalf("rename = %q, %v", title, err)
+	}
+	if fileExists(filepath.Join(v.Root(), "Вальмор.md")) || !fileExists(filepath.Join(v.Root(), "Вальмор-на-Попелі.md")) {
+		t.Error("file not renamed")
+	}
+	view, err := v.Get("Вальмор")
+	if err != nil || view.Title != "Вальмор-на-Попелі" || view.RedirectedFrom == "" {
+		t.Errorf("old title does not redirect: %+v, %v", view, err)
+	}
+	// Links to the old title still count as backlinks.
+	if !slices.Contains(view.Backlinks, "Аедрін Сірий") {
+		t.Errorf("backlinks after rename = %v", view.Backlinks)
+	}
+
+	// Renaming onto another page is refused; onto its own alias is fine.
+	src = v.Source("Аедрін Сірий")
+	src.Title = "Головна"
+	if _, err := v.SaveSource("Аедрін Сірий", src); !errors.Is(err, ErrExists) {
+		t.Errorf("rename onto another page: %v", err)
+	}
+	src.Title = "Сірий Вовк"
+	if _, err := v.SaveSource("Аедрін Сірий", src); err != nil {
+		t.Fatal(err)
+	}
+	got := v.Source("Сірий Вовк")
+	if got.Title != "Сірий Вовк" || !slices.Equal(got.Aliases, []string{"Аедрін Сірий"}) {
+		t.Errorf("after rename to alias: title %q aliases %v", got.Title, got.Aliases)
+	}
+
+	// An empty title is rejected.
+	if _, err := v.SaveSource("", Source{Create: true}); !errors.As(err, new(*InvalidError)) {
+		t.Errorf("empty title: %v", err)
 	}
 }

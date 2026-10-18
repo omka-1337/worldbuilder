@@ -251,3 +251,41 @@ main.standalone {
   font-family: var(--mono);
   font-size: 0.85em;
 }
+
+/* Article-title suggestions while typing a [[link]] (lib/linkComplete.ts). */
+.link-complete {
+  position: fixed;
+  z-index: 50;
+  width: 280px;
+  max-height: 18rem;
+  overflow-y: auto;
+  margin: 0;
+  padding: 0.25rem;
+  list-style: none;
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 0.16);
+  font-size: 0.92rem;
+}
+.link-complete li {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.3rem 0.55rem;
+  border-radius: 5px;
+  cursor: pointer;
+}
+.link-complete li small {
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.link-complete li[aria-selected='true'] {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+.link-complete li.create {
+  color: var(--link-new);
+}

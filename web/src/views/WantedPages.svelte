@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { api, pageHref, type Wanted } from '../lib/api'
+  import { api, editHref, pageHref, type Wanted } from '../lib/api'
   import { store } from '../lib/store.svelte'
   import { plural } from '../lib/format'
 
@@ -17,7 +17,7 @@
   <ol>
     {#each wanted as w (w.title)}
       <li>
-        <a class="new" href={pageHref(w.title)}>{w.title}</a>
+        <a class="new" href={editHref(w.title)}>{w.title}</a>
         <span class="muted">
           — {plural(w.from.length, ['посилання', 'посилання', 'посилань'])}:
           {#each w.from as from, i (from)}{i ? ', ' : ''}<a href={pageHref(from)}>{from}</a>{/each}

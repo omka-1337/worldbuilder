@@ -3,7 +3,9 @@ package vault
 import (
 	"bytes"
 	"os"
+	"path"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/goccy/go-yaml"
@@ -13,6 +15,8 @@ import (
 // file's frontmatter is an implementation detail the user never sees.
 type Source struct {
 	Exists     bool     `json:"exists"`
+	Create     bool     `json:"create"` // on save: fail if the title is taken
+	Title      string   `json:"title"`  // on save: a different title renames the page
 	Type       string   `json:"type"`
 	Aliases    []string `json:"aliases"`
 	Categories []string `json:"categories"`
@@ -28,10 +32,11 @@ func (v *Vault) Source(title string) Source {
 
 	p, ok := v.lookup(title)
 	if !ok {
-		return Source{Aliases: []string{}, Categories: []string{}, Infobox: []Field{}}
+		return Source{Title: title, Aliases: []string{}, Categories: []string{}, Infobox: []Field{}}
 	}
 	return Source{
 		Exists:     true,
+		Title:      p.Title,
 		Type:       p.Type,
 		Aliases:    nonNil(p.Aliases),
 		Categories: nonNil(p.Categories),
@@ -43,19 +48,75 @@ func (v *Vault) Source(title string) Source {
 // SaveSource writes the editor's parts back into the page's file, keeping
 // any frontmatter keys the editor does not know about. Empty values are left
 // out so files stay clean.
+//
+// title names the page being edited. A different src.Title renames it, the
+// way Wikipedia moves a page: the file is renamed and the old title becomes
+// an alias, so existing links keep working. With src.Create, an existing
+// page under either title is an error rather than overwritten.
 func (v *Vault) SaveSource(title string, src Source) (string, error) {
+	v.mu.Lock()
+	defer v.mu.Unlock()
+
+	newTitle := strings.Join(strings.Fields(src.Title), " ")
+	if newTitle == "" {
+		newTitle = strings.Join(strings.Fields(title), " ")
+	}
+	if newTitle == "" {
+		return "", &InvalidError{"an article needs a title"}
+	}
+
+	page, exists := v.lookup(title)
+	other, taken := v.lookup(newTitle)
+	if src.Create && (exists || taken) {
+		return "", ErrExists
+	}
+
+	var rel, old string
+	aliases := cleanList(src.Aliases)
+	switch {
+	case !exists:
+		rel = fileNameFor(newTitle)
+		if taken || fileExists(filepath.Join(v.root, rel)) {
+			return "", ErrExists
+		}
+	case Key(newTitle) == Key(page.Title):
+		rel = page.Path
+		if newTitle != page.Title { // a case-only change still renames the file
+			rel, old = path.Join(path.Dir(page.Path), fileNameFor(newTitle)), page.Path
+		}
+	default:
+		if taken && other != page {
+			return "", ErrExists
+		}
+		rel, old = path.Join(path.Dir(page.Path), fileNameFor(newTitle)), page.Path
+		if fileExists(filepath.Join(v.root, filepath.FromSlash(rel))) {
+			return "", ErrExists
+		}
+		// The new title may have been one of the aliases; the old one becomes one.
+		aliases = slices.DeleteFunc(aliases, func(a string) bool { return Key(a) == Key(newTitle) })
+		aliases = cleanList(append(aliases, page.Title))
+	}
+
 	var doc yaml.MapSlice
-	if raw := v.existingFile(title); raw != nil {
-		fm, _ := splitFrontmatter(raw)
-		if len(fm) > 0 {
+	if exists {
+		raw, err := os.ReadFile(filepath.Join(v.root, filepath.FromSlash(page.Path)))
+		if err != nil {
+			return "", err
+		}
+		if fm, _ := splitFrontmatter(raw); len(fm) > 0 {
 			if err := yaml.Unmarshal(fm, &doc); err != nil {
-				return "", &ParseError{Path: title, Err: err}
+				return "", &ParseError{Path: page.Path, Err: err}
 			}
 		}
 	}
 
+	for _, item := range doc {
+		if item.Key == "title" { // an explicit title wins over the file name
+			doc = setItem(doc, "title", newTitle)
+		}
+	}
 	doc = setOrDelete(doc, "type", strings.TrimSpace(src.Type))
-	doc = setOrDelete(doc, "aliases", cleanList(src.Aliases))
+	doc = setOrDelete(doc, "aliases", aliases)
 	doc = setOrDelete(doc, "categories", cleanList(src.Categories))
 	infobox := yaml.MapSlice{}
 	seen := map[string]bool{}
@@ -80,21 +141,7 @@ func (v *Vault) SaveSource(title string, src Source) (string, error) {
 		out.WriteString("---\n")
 	}
 	out.WriteString(strings.TrimLeft(src.Body, "\n"))
-	return v.Save(title, out.Bytes())
-}
-
-func (v *Vault) existingFile(title string) []byte {
-	v.mu.RLock()
-	p, ok := v.lookup(title)
-	v.mu.RUnlock()
-	if !ok {
-		return nil
-	}
-	raw, err := os.ReadFile(filepath.Join(v.root, filepath.FromSlash(p.Path)))
-	if err != nil {
-		return nil
-	}
-	return raw
+	return v.writePage(rel, old, out.Bytes())
 }
 
 // setOrDelete sets key to value, or removes it when value is empty.

@@ -103,6 +103,11 @@ func (v *Vault) pageURL(title string) string {
 	return v.base + "/wiki/" + url.PathEscape(strings.ReplaceAll(strings.TrimSpace(title), " ", "_"))
 }
 
+// editURL opens the editor; red links go straight there, as on Wikipedia.
+func (v *Vault) editURL(title string) string {
+	return v.base + "/edit/" + url.PathEscape(strings.ReplaceAll(strings.TrimSpace(title), " ", "_"))
+}
+
 func (v *Vault) fileURL(rel string) string {
 	parts := strings.Split(rel, "/")
 	for i, p := range parts {
@@ -164,7 +169,7 @@ func (r *linkRenderer) render(w util.BufWriter, src []byte, node ast.Node, enter
 	case ok:
 		href, class = r.v.pageURL(page.Title), "wikilink"
 	default:
-		href, class = r.v.pageURL(target), "wikilink new"
+		href, class = r.v.editURL(target), "wikilink new"
 	}
 	if len(n.Fragment) > 0 {
 		href += "#" + url.PathEscape(slug(string(n.Fragment)))

@@ -14,7 +14,6 @@
   import CategoryPage from '../views/CategoryPage.svelte'
   import WantedPages from '../views/WantedPages.svelte'
   import SearchResults from '../views/SearchResults.svelte'
-  import NewPage from '../views/NewPage.svelte'
 
   // Everything inside a world is at /w/{id}/…; `rest` is the part after it.
   let { id, rest }: { id: string; rest: string[] } = $props()
@@ -94,7 +93,7 @@
       {:else if route.name === 'search'}
         <SearchResults />
       {:else if route.name === 'new'}
-        <NewPage />
+        <Editor title="" />
       {:else if route.name === 'timeline'}
         <Timeline />
       {:else if route.name === 'types'}
