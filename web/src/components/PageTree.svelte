@@ -14,6 +14,7 @@
     onmove,
     onmovefolder,
     onmenu,
+    states,
   }: {
     nodes: TreeNode[]
     depth?: number
@@ -22,7 +23,11 @@
     onmove: (title: string, folder: string) => void
     onmovefolder: (folder: string, to: string) => void
     onmenu: (e: MouseEvent, node: TreeNode) => void
+    states: Map<string, string> // changes since the last version, by node path
   } = $props()
+
+  // A closed group hides its changes: a dot says there are some inside.
+  const changedInside = (n: TreeNode) => [...states.keys()].some((p) => p.startsWith(n.path + '/'))
 
   const toggle = (n: TreeNode) => (expanded.has(n.path) ? expanded.delete(n.path) : expanded.add(n.path))
 
@@ -57,6 +62,7 @@
   {#each nodes as n (n.path)}
     {@const open = expanded.has(n.path)}
     {@const folder = !n.title}
+    {@const state = n.ghost ? 'deleted' : states.get(n.path)}
     <li>
       <div
         class="row"
@@ -64,7 +70,7 @@
         class:over={drag.over === n.path}
         class:dragged={n.title ? drag.title === n.title : drag.folder === n.path}
         style:padding-left="{depth * 0.9 + 0.15}rem"
-        draggable="true"
+        draggable={n.ghost ? 'false' : 'true'}
         role="treeitem"
         aria-selected={!!n.title && n.title === current}
         aria-expanded={n.children?.length ? open : undefined}
@@ -81,8 +87,9 @@
         oncontextmenu={(e) => {
           e.preventDefault()
           e.stopPropagation()
-          onmenu(e, n)
+          if (!n.ghost) onmenu(e, n)
         }}
+        title={state === 'deleted' ? 'Видалено після останньої збереженої версії' : state === 'added' ? 'Нове після останньої збереженої версії' : state === 'modified' ? 'Змінено після останньої збереженої версії' : undefined}
       >
         {#if n.children?.length}
           <button class="chevron" class:open onclick={() => toggle(n)} aria-label={open ? 'Згорнути' : 'Розгорнути'}>
@@ -91,20 +98,27 @@
         {:else}
           <span class="chevron-space"></span>
         {/if}
-        {#if folder}
+        {#if n.ghost && !n.children?.length}
+          <span class="name">
+            <span class="icon"><Icon name="file" size={15} /></span>
+            <span class="text {state}">{n.name}</span>
+          </span>
+        {:else if folder}
           <button class="name folder" onclick={() => toggle(n)}>
             <span class="icon"><Icon name={open && n.children?.length ? 'folder-open' : 'folder'} size={15} /></span>
-            <span class="text">{n.name}</span>
+            <span class="text {state}">{n.name}</span>
+            {#if !open && changedInside(n)}<span class="dot" aria-label="Є зміни всередині"></span>{/if}
           </button>
         {:else}
           <a class="name" href={pageHref(n.title!)} draggable="false">
             <span class="icon" style:color={n.type ? typeColor(n.type) : undefined}><Icon name="file" size={15} /></span>
-            <span class="text">{n.name}</span>
+            <span class="text {state}">{n.name}</span>
+            {#if !open && changedInside(n)}<span class="dot" aria-label="Є зміни всередині"></span>{/if}
           </a>
         {/if}
       </div>
       {#if open && n.children?.length}
-        <Self nodes={n.children} depth={depth + 1} {current} {expanded} {onmove} {onmovefolder} {onmenu} />
+        <Self nodes={n.children} depth={depth + 1} {current} {expanded} {onmove} {onmovefolder} {onmenu} {states} />
       {/if}
     </li>
   {/each}
@@ -135,6 +149,24 @@
   .row.over {
     background: var(--accent-soft);
     box-shadow: inset 0 0 0 2px var(--accent);
+  }
+  .text.added {
+    color: var(--added);
+  }
+  .text.modified {
+    color: var(--changed);
+  }
+  .text.deleted {
+    color: var(--removed);
+    text-decoration: line-through;
+  }
+  .dot {
+    flex: none;
+    width: 6px;
+    height: 6px;
+    margin-left: auto;
+    border-radius: 50%;
+    background: var(--changed);
   }
   .row.dragged {
     opacity: 0.45;

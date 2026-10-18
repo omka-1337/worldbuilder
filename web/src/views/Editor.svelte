@@ -489,11 +489,11 @@
     margin-left: auto;
   }
   .plus {
-    color: #2f9e58;
+    color: var(--added);
     font-weight: 600;
   }
   .minus {
-    color: var(--danger);
+    color: var(--removed);
     font-weight: 600;
   }
   .body {

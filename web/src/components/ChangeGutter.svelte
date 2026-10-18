@@ -109,7 +109,7 @@
     left: 0.3rem;
     width: 3px;
     border-radius: 2px;
-    background: #2f9e58;
+    background: var(--added);
   }
   .deleted {
     position: absolute;
@@ -119,7 +119,7 @@
     height: 0;
     border-top: 4px solid transparent;
     border-bottom: 4px solid transparent;
-    border-left: 6px solid var(--danger);
+    border-left: 6px solid var(--removed);
   }
   .mirror {
     position: absolute;

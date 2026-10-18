@@ -92,6 +92,7 @@ export interface TreeNode {
   title?: string // empty for a plain folder
   type?: string
   children?: TreeNode[]
+  ghost?: boolean // deleted since the last saved version: shown, but gone
 }
 
 export interface Crumb {

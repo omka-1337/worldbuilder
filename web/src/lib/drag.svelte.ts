@@ -36,4 +36,4 @@ export function endDrag() {
 // Any article or folder accepts a drop, except the dragged node and
 // everything nested in it.
 export const accepts = (node: TreeNode) =>
-  dragging() && node.path !== drag.path && !node.path.startsWith(drag.path + '/')
+  dragging() && !node.ghost && node.path !== drag.path && !node.path.startsWith(drag.path + '/')

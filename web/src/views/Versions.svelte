@@ -128,13 +128,13 @@
     letter-spacing: 0.04em;
   }
   .state.added {
-    color: #2f9e58;
+    color: var(--added);
   }
   .state.modified {
-    color: var(--accent);
+    color: var(--changed);
   }
   .state.deleted {
-    color: var(--danger);
+    color: var(--removed);
   }
   .path {
     font-size: 0.82rem;

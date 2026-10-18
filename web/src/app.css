@@ -12,6 +12,10 @@
   --link-new: #c73a2b;
   --mark: #fbe7a1;
   --danger: #b42318;
+  /* Files against the last saved version (the tree, the editor's margin). */
+  --added: #2f8a4c;
+  --changed: #a67c00;
+  --removed: #b42318;
   --radius: 8px;
   --mono: ui-monospace, 'JetBrains Mono', 'Cascadia Code', Menlo, Consolas, monospace;
   --sans: system-ui, -apple-system, 'Segoe UI', Roboto, 'Noto Sans', sans-serif;
@@ -34,6 +38,9 @@
     --link-new: #f2816f;
     --mark: #6a5418;
     --danger: #f97066;
+    --added: #73c991;
+    --changed: #e2c08d;
+    --removed: #f97066;
     color-scheme: dark;
   }
 }
@@ -51,6 +58,9 @@
   --link-new: #f2816f;
   --mark: #6a5418;
   --danger: #f97066;
+  --added: #73c991;
+  --changed: #e2c08d;
+  --removed: #f97066;
   color-scheme: dark;
 }
 

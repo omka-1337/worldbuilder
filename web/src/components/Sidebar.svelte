@@ -10,6 +10,7 @@
   import { store, refresh } from '../lib/store.svelte'
   import { drag, dragging, endDrag } from '../lib/drag.svelte'
   import { prefs, SIDEBAR } from '../lib/prefs.svelte'
+  import { changes, articleStates, withDeleted } from '../lib/versions.svelte'
 
   let query = $state('')
   let hits = $state<Hit[]>([])
@@ -252,6 +253,11 @@
 
   let overRoot = $state(false)
 
+  // Articles against the last saved version: colored in the tree, and the
+  // deleted ones still shown, struck out.
+  const states = $derived(articleStates(changes.list))
+  const tree = $derived(withDeleted(store.tree, states))
+
   // --- width -------------------------------------------------------------
 
   let resizing = $state(false)
@@ -336,7 +342,7 @@
     }}
   >
     {#if treeError}<p class="move-error">{treeError}</p>{/if}
-    <PageTree nodes={store.tree} {current} {expanded} onmove={move} onmovefolder={moveFolder} onmenu={openMenu} />
+    <PageTree nodes={tree} {states} {current} {expanded} onmove={move} onmovefolder={moveFolder} onmenu={openMenu} />
     {#if store.tree.length > 1 && !dragging()}
       <p class="tip muted">Перетягніть статтю чи папку на іншу статтю чи папку, щоб перемістити. Права кнопка — меню.</p>
     {/if}
