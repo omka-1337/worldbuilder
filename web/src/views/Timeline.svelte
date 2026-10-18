@@ -190,14 +190,30 @@
 
   $effect(() => {
     if (!stage) return
+    // Sideways scrolling (two fingers on a touchpad, or Shift + wheel) pans;
+    // vertical scrolling and pinching (a wheel event with ctrlKey) zoom
+    // around the pointer.
     const onWheel = (e: WheelEvent) => {
       e.preventDefault()
       cancelAnimationFrame(frame)
-      const rect = stage!.getBoundingClientRect()
-      const anchor = from + ((e.clientX - rect.left - PAD) / Math.max(width - 2 * PAD, 1)) * (to - from)
-      const [min, max] = fullRange()
+      const unit = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? width : 1 // lines or pages → px
+      let dx = e.deltaX * unit
+      let dy = e.deltaY * unit
+      if (e.shiftKey && !dx) [dx, dy] = [dy, 0]
+      const inner = Math.max(width - 2 * PAD, 1)
       const span = to - from
-      const next = Math.min(Math.max(span * Math.exp(e.deltaY * 0.0015), 3), (max - min) * 3)
+
+      if (Math.abs(dx) > Math.abs(dy)) {
+        const shift = (dx / inner) * span
+        from += shift
+        to += shift
+        return
+      }
+      const rect = stage!.getBoundingClientRect()
+      const anchor = from + ((e.clientX - rect.left - PAD) / inner) * span
+      const [min, max] = fullRange()
+      const speed = e.ctrlKey ? 0.01 : 0.0015 // pinch deltas are small
+      const next = Math.min(Math.max(span * Math.exp(dy * speed), 3), (max - min) * 3)
       const k = next / span
       from = anchor - (anchor - from) * k
       to = anchor + (to - anchor) * k
@@ -251,7 +267,7 @@
   >
     <div class="bar">
       <h1>Таймлайн</h1>
-      <span class="muted hint">Колесо — масштаб, перетягування — зсув, ← → — сусідні роки</span>
+      <span class="muted hint">Колесо або щипок — масштаб, прокрутка вбік чи перетягування — зсув, ← → — сусідні роки</span>
       <button onclick={resetView}>Весь таймлайн</button>
     </div>
     {#if legend.length}
