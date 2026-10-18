@@ -60,6 +60,12 @@ func TestHistory(t *testing.T) {
 			t.Errorf("change %d = %+v, want %+v", i, ch[i], want[i])
 		}
 	}
+	if got, ok, err := r.Committed("Головна.md"); err != nil || !ok || string(got) != "Привіт.\n" {
+		t.Errorf("committed = %q, %v, %v", got, ok, err)
+	}
+	if _, ok, err := r.Committed("Вальмор.md"); err != nil || ok {
+		t.Errorf("an uncommitted file: %v, %v", ok, err)
+	}
 	v, err := r.Commit("  Правки  ")
 	if err != nil || v.Message != "Правки" {
 		t.Fatalf("commit = %+v, %v", v, err)

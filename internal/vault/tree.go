@@ -121,6 +121,23 @@ func (v *Vault) TitleAt(rel string) (string, bool) {
 	return "", false
 }
 
+// PathOf returns the file of the article with the given title or alias.
+func (v *Vault) PathOf(title string) (string, bool) {
+	v.mu.RLock()
+	defer v.mu.RUnlock()
+	if p, ok := v.lookup(title); ok {
+		return p.Path, true
+	}
+	return "", false
+}
+
+// Body returns the part of an article file after its frontmatter, as the
+// editor shows it.
+func Body(raw []byte) string {
+	_, body := splitFrontmatter(raw)
+	return strings.ReplaceAll(string(body), "\r\n", "\n")
+}
+
 // pageAt finds the article whose folder is dir, whatever its extension case.
 func (v *Vault) pageAt(dir string) (*Page, bool) {
 	for _, p := range v.idx.pages {

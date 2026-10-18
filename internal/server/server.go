@@ -51,6 +51,7 @@ func New(lib *library.Library, ui fs.FS) http.Handler {
 	mux.HandleFunc("GET "+w+"/types", s.inWorld(s.types))
 	mux.HandleFunc("PUT "+w+"/types", s.inWorld(s.saveTypes))
 	mux.HandleFunc("GET "+w+"/changes", s.inWorld(s.changes))
+	mux.HandleFunc("GET "+w+"/committed/{title...}", s.inWorld(s.committed))
 	mux.HandleFunc("GET "+w+"/versions", s.inWorld(s.versions))
 	mux.HandleFunc("POST "+w+"/versions", s.inWorld(s.saveVersion))
 	mux.HandleFunc("GET /w/{world}/files/{path...}", s.inWorld(s.file))
@@ -352,6 +353,36 @@ func (s *server) changes(w http.ResponseWriter, r *http.Request, v *vault.Vault)
 		out[i].Title, _ = v.TitleAt(c.Path)
 	}
 	writeJSON(w, out)
+}
+
+// committed returns an article's text as of the last saved version, for
+// the editor to mark what changed since. Tracked is false when there is no
+// history to compare with; a new article has none of its text saved.
+func (s *server) committed(w http.ResponseWriter, r *http.Request, v *vault.Vault) {
+	type answer struct {
+		Tracked bool   `json:"tracked"`
+		Body    string `json:"body"`
+	}
+	repo, err := s.lib.History(r.PathValue("world"))
+	if err != nil {
+		writeJSON(w, answer{})
+		return
+	}
+	rel, ok := v.PathOf(titleParam(r))
+	if !ok {
+		writeJSON(w, answer{Tracked: true})
+		return
+	}
+	raw, ok, err := repo.Committed(rel)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	if !ok {
+		writeJSON(w, answer{Tracked: true})
+		return
+	}
+	writeJSON(w, answer{Tracked: true, Body: vault.Body(raw)})
 }
 
 func (s *server) versions(w http.ResponseWriter, r *http.Request, v *vault.Vault) {

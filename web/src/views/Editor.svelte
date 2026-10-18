@@ -9,6 +9,9 @@
   import { linkComplete } from '../lib/linkComplete'
   import { exampleDate } from '../lib/calendar'
   import { fieldLabel } from '../lib/fields'
+  import { lineChanges } from '../lib/linediff'
+  import { plural } from '../lib/format'
+  import ChangeGutter from '../components/ChangeGutter.svelte'
 
   // The article being edited; empty for a brand-new one from "New article".
   let { title }: { title: string } = $props()
@@ -70,6 +73,11 @@
         else values[f.key] = f.value
       }
       saved = JSON.stringify(build())
+      // The text as last saved as a version, to mark what changed since.
+      api.committed(src?.exists ? src.title : name || title).then(
+        (c) => (base = c.tracked ? c.body : null),
+        () => (base = null),
+      )
     } catch (e) {
       error = String(e)
     }
@@ -82,6 +90,14 @@
   $effect(() => {
     document.title = `${isNew ? 'Нова стаття' : 'Редагування'}${name ? ': ' + name : ''} — ${store.world?.name}`
   })
+
+  // --- changes and counts ------------------------------------------------
+
+  let base = $state<string | null>(null) // null: no history to compare with
+  const changes = $derived(base === null ? null : lineChanges(base, body))
+  const chars = $derived([...body.replaceAll('\n', '')].length)
+  const words = $derived(body.match(/[\p{L}\p{N}][\p{L}\p{N}'’ʼ-]*/gu)?.length ?? 0)
+  const count = (n: number) => n.toLocaleString('uk')
 
   function build() {
     const infobox = [
@@ -259,16 +275,36 @@
       </button>
     </div>
 
-    <textarea
-      id="body"
-      class="body"
-      bind:this={bodyInput}
-      bind:value={body}
-      use:linkComplete={pages}
-      spellcheck="true"
-      placeholder="Почніть писати. Наберіть [[, щоб послатися на іншу статтю."
-      aria-label="Текст статті"
-    ></textarea>
+    <div class="body-wrap">
+      <textarea
+        id="body"
+        class="body"
+        bind:this={bodyInput}
+        bind:value={body}
+        use:linkComplete={pages}
+        spellcheck="true"
+        placeholder="Почніть писати. Наберіть [[, щоб послатися на іншу статтю."
+        aria-label="Текст статті"
+      ></textarea>
+      <ChangeGutter textarea={bodyInput} text={body} {changes} />
+    </div>
+
+    <div class="stats" aria-live="off">
+      <span>{count(chars)} {plural(chars, ['символ', 'символи', 'символів']).replace(/^\S+ /, '')}</span>
+      <span>{count(words)} {plural(words, ['слово', 'слова', 'слів']).replace(/^\S+ /, '')}</span>
+      {#if changes}
+        <span class="diff" title="Відносно останньої збереженої версії">
+          {#if changes.addedCount || changes.deletedCount}
+            <span class="plus">+{changes.addedCount}</span>
+            <span class="minus">−{changes.deletedCount}</span>
+            {plural(Math.max(changes.addedCount, changes.deletedCount), ['рядок', 'рядки', 'рядків']).replace(/^\S+ /, '')}
+            від останньої версії
+          {:else}
+            Без змін від останньої версії
+          {/if}
+        </span>
+      {/if}
+    </div>
 
     <aside class="props">
       <div class="group">
@@ -393,7 +429,7 @@
   .editor {
     display: grid;
     grid-template-columns: minmax(0, 1fr) 20rem;
-    grid-template-rows: auto minmax(0, 1fr) auto;
+    grid-template-rows: auto minmax(0, 1fr) auto auto;
     gap: 0.75rem 1.5rem;
     max-width: 76rem;
     height: calc(100vh - 6rem);
@@ -433,6 +469,33 @@
     color: var(--danger);
   }
 
+  .body-wrap {
+    grid-area: 2 / 1;
+    position: relative;
+    display: grid;
+    min-height: 0;
+  }
+  .stats {
+    grid-area: 3 / 1;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem 1.2rem;
+    margin-top: -0.35rem;
+    font-size: 0.82rem;
+    color: var(--text-muted);
+    font-variant-numeric: tabular-nums;
+  }
+  .stats .diff {
+    margin-left: auto;
+  }
+  .plus {
+    color: #2f9e58;
+    font-weight: 600;
+  }
+  .minus {
+    color: var(--danger);
+    font-weight: 600;
+  }
   .body {
     padding: 1rem 1.1rem;
     font: 1rem/1.7 var(--sans);
@@ -440,6 +503,7 @@
   }
 
   .props {
+    grid-area: 2 / 2 / 4;
     display: flex;
     flex-direction: column;
     gap: 1.1rem;
@@ -537,7 +601,7 @@
     font-size: 0.8rem;
   }
   .help {
-    grid-column: 1 / -1;
+    grid-area: 4 / 1 / 5 / -1;
     font-size: 0.8rem;
     margin: 0;
   }
@@ -553,6 +617,12 @@
     }
     .actions {
       justify-content: flex-start;
+    }
+    .body-wrap,
+    .stats,
+    .props,
+    .help {
+      grid-area: auto;
     }
     .body {
       min-height: 60vh;

@@ -114,6 +114,37 @@ func (r *Repo) Changes() ([]Change, error) {
 	return out, nil
 }
 
+// Committed returns the content of file path (slash-separated) in the last
+// saved version; ok is false when that version has no such file, or there
+// is no version yet.
+func (r *Repo) Committed(path string) (content []byte, ok bool, err error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	head, err := r.repo.Head()
+	if errors.Is(err, plumbing.ErrReferenceNotFound) {
+		return nil, false, nil
+	}
+	if err != nil {
+		return nil, false, err
+	}
+	commit, err := r.repo.CommitObject(head.Hash())
+	if err != nil {
+		return nil, false, err
+	}
+	file, err := commit.File(path)
+	if errors.Is(err, object.ErrFileNotFound) {
+		return nil, false, nil
+	}
+	if err != nil {
+		return nil, false, err
+	}
+	text, err := file.Contents()
+	if err != nil {
+		return nil, false, err
+	}
+	return []byte(text), true, nil
+}
+
 // Version is one saved state of the world.
 type Version struct {
 	Hash    string    `json:"hash"`

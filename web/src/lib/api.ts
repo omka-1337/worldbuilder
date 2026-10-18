@@ -281,6 +281,9 @@ export const api = {
   saveTypes: (types: TypeInfo[]) => send<TypeInfo[]>('PUT', `${w()}/types`, types),
 
   changes: () => get<Change[]>(`${w()}/changes`),
+  // The article's text in the last saved version; tracked is false when the
+  // world has no history to compare with.
+  committed: (title: string) => get<{ tracked: boolean; body: string }>(`${w()}/committed/${enc(title)}`),
   versions: (limit = 50) => get<Version[]>(`${w()}/versions?limit=${limit}`),
   // Saves every change as a new version.
   saveVersion: (message: string) => send<Version>('POST', `${w()}/versions`, { message }),
