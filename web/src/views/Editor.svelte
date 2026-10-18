@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte'
-  import { api, NotFoundError, pageHref } from '../lib/api'
+  import { api, NotFoundError, pageHref, worldHref } from '../lib/api'
   import { navigate } from '../lib/router.svelte'
   import { store, refresh } from '../lib/store.svelte'
 
@@ -111,6 +111,7 @@
       {#each types as [type, def] (type)}
         <button onclick={() => (content = template(type))}>{def.label}</button>
       {/each}
+      <a class="manage" href={worldHref(undefined, '/types')}>Керувати типами…</a>
     </div>
   {/if}
 
@@ -159,6 +160,10 @@
   }
   .types button {
     padding: 0.15rem 0.65rem;
+  }
+  .manage {
+    font-size: 0.85rem;
+    margin-left: 0.3rem;
   }
   textarea {
     flex: 1;

@@ -1,64 +1,67 @@
 # Worldbuilder
 
-Локальна вікі для ворлдбілдингу: статті зі структурою як у Вікіпедії
-(інфобокси, категорії, перенаправлення, «Посилання сюди», потрібні статті)
-поверх звичайної теки з Markdown-файлами.
+A local wiki for worldbuilding. Articles are structured like Wikipedia's —
+infoboxes, categories, redirects, "what links here", wanted pages — on top of
+plain Markdown files, plus a timeline built from the dates in those articles.
 
-## Запуск
+## Running
 
 ```sh
-make              # збирає інтерфейс і бінарник ./worldbuilder
-./worldbuilder    # відкриває в браузері список світів
+make              # builds the UI and the ./worldbuilder binary
+./worldbuilder    # opens the world picker in the browser
 ```
 
-Світи зберігаються в `Documents/Worldbuilder/` (на Linux — у теці документів
-з `~/.config/user-dirs.dirs`, на Windows — у «Документах», навіть якщо їх
-перенесено в OneDrive). Інша бібліотека: `./worldbuilder -library ~/шлях`.
+Worlds live in `<Documents>/Worldbuilder/`: on Linux the documents folder
+comes from `~/.config/user-dirs.dirs`, on Windows it is the Documents known
+folder (OneDrive redirection included). Use `-library <path>` for another
+location.
 
-Розробка з гарячим перезавантаженням інтерфейсу: `make dev` (бібліотека —
-тека [examples](examples)), потім відкрити http://localhost:5173.
-Збірки під Linux, macOS і Windows: `make release`.
+Development with UI hot reload: `make dev` (optionally `LIBRARY=<path>`), then
+open http://localhost:5173. Release builds for Linux, macOS and Windows:
+`make release`.
 
-## Формат світу
+## World format
 
-Світ — це тека з назвою світу всередині бібліотеки:
+Each world is a folder named after it inside the library:
 
 ```
 Documents/Worldbuilder/
-├── Попелясті Землі/
+├── My World/
 │   ├── world.yaml
-│   ├── Головна.md
+│   ├── Main page.md
 │   └── …
-└── Інший світ/
+└── Another World/
 ```
 
-Кожен `.md` у теці світу (окрім прихованих тек) — стаття; назва файлу
-є назвою статті, якщо у frontmatter не вказано `title`. Файли можна редагувати
-будь-яким редактором: зміни підхоплюються автоматично.
+Every `.md` file in a world (outside hidden folders) is an article. The file
+name is the title unless the frontmatter sets `title`. Files can be edited in
+any editor; changes are picked up automatically.
 
 ```markdown
 ---
-type: character                   # тип із world.yaml → поля інфобоксу
-aliases: [Сірий Вовк]             # перенаправлення на цю статтю
-categories: [Персонажі, Маги]
+type: character                   # article type → infobox fields
+aliases: [Grey Wolf]              # redirects to this article
+categories: [Characters, Mages]
 infobox:
-  born: 312 ЕП, [[Вальмор]]
-  affiliation: "[[Орден Попелу]]" # посилання в YAML беріть у лапки
-  image: "![[aedrin.png]]"        # зображення з будь-якої теки світу
+  born: 312, [[Valmor]]
+  affiliation: "[[Order of Ash]]" # quote wikilinks inside YAML
+  image: "![[aedrin.png]]"        # an image anywhere in the world folder
 ---
-**Аедрін** — засновник [[Орден Попелу|Ордену]]. Див. [[#Спадщина]].
+**Aedrin** founded the [[Order of Ash|Order]]. See [[#Legacy]].
 ```
 
-`world.yaml` задає назву світу, головну сторінку й типи статей з їхніми
-полями. Поля з `type: date` (наприклад, `date: 340–347 ЕП`) потрапляють на
-таймлайн; типи з `event: true` вважаються подіями. Точка таймлайну — рік: що
-більше в ньому подій, то більша точка, а назву їй дає подія з найдовшою статтею. Новий світ отримує набір типів за замовчуванням; приклад —
-[examples/Попелясті Землі/world.yaml](examples/Попелясті%20Землі/world.yaml).
+`world.yaml` holds the world's name, main page and article types. Types are
+edited on the app's "Article types" page, so users never touch the YAML.
+Each type lists its infobox fields; a field of kind *date* (e.g.
+`date: 340–347`) puts the article on the timeline, and types marked as
+events name the years they fall in. Type and field keys are generated once
+from their names and never change, so renaming keeps articles working.
 
-## Структура коду
+## Code layout
 
-- `cmd/worldbuilder` — точка входу
-- `internal/library` — бібліотека світів: список, створення, відкриття
-- `internal/vault` — читання теки, індекс посилань, рендеринг Markdown
-- `internal/server` — JSON API і роздача інтерфейсу
-- `web` — інтерфейс (Svelte), вбудовується в бінарник через `go:embed`
+- `cmd/worldbuilder` — entry point
+- `internal/library` — the library of worlds: listing, creating, opening
+- `internal/vault` — one world: reading files, the link index, Markdown
+  rendering, timeline, article types
+- `internal/server` — JSON API and serving the UI
+- `web` — the UI (Svelte), embedded into the binary with `go:embed`

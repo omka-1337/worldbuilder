@@ -1,14 +1,12 @@
 name: %s
 description: ""
 mainPage: Головна
-era: "" # підпис після року на таймлайні, напр. "ЕП"
+era: "" # shown after years on the timeline, e.g. "AD"
 language: uk
 
-# Типи статей. Поля визначають, які рядки показує інфобокс і в якому порядку.
-# Поля з `type: date` потрапляють на таймлайн; статті типів з `event: true`
-# вважаються подіями і дають назву року на таймлайні.
-# Додавайте свої типи й поля: ключ (key) пишеться у frontmatter статті,
-# підпис (label) показується в інфобоксі.
+# Article types and their infobox fields, in display order. Edited from the
+# app's "Article types" page. A field with `type: date` puts the article on
+# the timeline; articles of a type with `event: true` count as events there.
 types:
   character:
     label: Персонаж

@@ -35,6 +35,8 @@ type Vault struct {
 	mu    sync.RWMutex
 	world World
 	idx   *index
+
+	cfgMu sync.Mutex // serializes writes to world.yaml
 }
 
 type index struct {

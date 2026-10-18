@@ -1,7 +1,6 @@
 # `make` builds the UI and embeds it into a single binary.
-# `make dev` runs the Go server and Vite (with hot reload) side by side.
-
-LIBRARY ?= examples
+# `make dev` runs the Go server and Vite (with hot reload) side by side,
+# on the default library in Documents unless LIBRARY=path is given.
 
 .PHONY: all web build dev test check release clean
 
@@ -19,7 +18,7 @@ build: web
 
 dev: web/node_modules
 	@trap 'kill 0' EXIT; \
-	go run ./cmd/worldbuilder -no-open -library $(LIBRARY) & \
+	go run ./cmd/worldbuilder -no-open $(if $(LIBRARY),-library "$(LIBRARY)") & \
 	cd web && npm run dev
 
 test:

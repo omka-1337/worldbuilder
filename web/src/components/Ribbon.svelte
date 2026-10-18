@@ -10,6 +10,7 @@
     { sub: '/pages', icon: 'list', label: 'Усі статті' },
     { sub: '/categories', icon: 'tag', label: 'Категорії' },
     { sub: '/wanted', icon: 'question', label: 'Потрібні статті' },
+    { sub: '/types', icon: 'shapes', label: 'Типи статей' },
   ]
 
   const isActive = (sub: string) =>

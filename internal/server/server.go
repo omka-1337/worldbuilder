@@ -36,6 +36,8 @@ func New(lib *library.Library, ui fs.FS) http.Handler {
 	mux.HandleFunc("GET "+w+"/categories/{name...}", s.inWorld(s.category))
 	mux.HandleFunc("GET "+w+"/wanted", s.inWorld(s.wanted))
 	mux.HandleFunc("GET "+w+"/timeline", s.inWorld(s.timeline))
+	mux.HandleFunc("GET "+w+"/types", s.inWorld(s.types))
+	mux.HandleFunc("PUT "+w+"/types", s.inWorld(s.saveTypes))
 	mux.HandleFunc("GET /w/{world}/files/{path...}", s.inWorld(s.file))
 
 	mux.Handle("GET /", spa(ui))
@@ -141,6 +143,24 @@ func (s *server) timeline(w http.ResponseWriter, r *http.Request, v *vault.Vault
 	writeJSON(w, v.Timeline())
 }
 
+func (s *server) types(w http.ResponseWriter, r *http.Request, v *vault.Vault) {
+	writeJSON(w, v.Types())
+}
+
+func (s *server) saveTypes(w http.ResponseWriter, r *http.Request, v *vault.Vault) {
+	var in []vault.TypeInfo
+	if err := json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&in); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	out, err := v.SaveTypes(in)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	writeJSON(w, out)
+}
+
 // file serves an attachment such as an image. os.DirFS rejects ".." paths;
 // dot-files (.git and the like) and directories are refused here.
 func (s *server) file(w http.ResponseWriter, r *http.Request, v *vault.Vault) {
@@ -173,6 +193,7 @@ func writeJSON(w http.ResponseWriter, v any) {
 
 func writeError(w http.ResponseWriter, err error) {
 	var parseErr *vault.ParseError
+	var invalid *vault.InvalidError
 	switch {
 	case errors.Is(err, vault.ErrNotFound), errors.Is(err, library.ErrNoWorld):
 		http.Error(w, err.Error(), http.StatusNotFound)
@@ -180,7 +201,7 @@ func writeError(w http.ResponseWriter, err error) {
 		http.Error(w, err.Error(), http.StatusConflict)
 	case errors.Is(err, library.ErrBadName):
 		http.Error(w, err.Error(), http.StatusBadRequest)
-	case errors.As(err, &parseErr):
+	case errors.As(err, &parseErr), errors.As(err, &invalid):
 		http.Error(w, err.Error(), http.StatusBadRequest)
 	default:
 		log.Print(err)

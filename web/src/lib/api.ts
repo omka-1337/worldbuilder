@@ -7,9 +7,21 @@ export interface World {
   types: Record<string, TypeDef>
 }
 
+export interface FieldDef {
+  key: string // empty until saved; then fixed, so renaming keeps articles working
+  label: string
+  type?: string // "date" or empty for text
+}
+
 export interface TypeDef {
   label: string
-  fields: { key: string; label: string }[]
+  event?: boolean
+  fields: FieldDef[]
+}
+
+export interface TypeInfo extends TypeDef {
+  key: string
+  count: number
 }
 
 export interface WorldInfo {
@@ -121,6 +133,8 @@ export const api = {
   category: (name: string) => get<Summary[]>(`${w()}/categories/${enc(name)}`),
   wanted: () => get<Wanted[]>(`${w()}/wanted`),
   timeline: () => get<TimelineYear[]>(`${w()}/timeline`),
+  types: () => get<TypeInfo[]>(`${w()}/types`),
+  saveTypes: (types: TypeInfo[]) => send<TypeInfo[]>('PUT', `${w()}/types`, types),
 
   // Resolves to the title the page ended up with.
   save: async (title: string, content: string) =>
