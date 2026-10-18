@@ -16,11 +16,40 @@ export interface FieldDef {
   _id?: string // editor-only handle, so a new field can be paired before it has a key
 }
 
-// How time is counted in a world; every part is optional.
+// How time is counted in a world, in the author's own terms: time units
+// from the largest down, and templates for how dates are written.
+export interface TimeUnit {
+  name: string
+  write?: '' | 'number' | 'roman' | 'names'
+  names?: string[]
+  per?: number // how many of this unit make one of its parent
+  lengths?: Record<string, number> // child units in particular values of this one
+}
+
 export interface Calendar {
-  yearParts?: number // parts in a year: the number after the dot in 139.096
-  partName?: string
-  epochs: { name?: string; years?: number }[] // epoch I first; years 0/absent = unknown
+  units: TimeUnit[]
+  formats: string[]
+  step?: string // the unit the timeline counts in
+}
+
+export interface DateRef {
+  title: string
+  field: string
+  date: string
+}
+
+export interface CalendarPreview {
+  error?: string
+  test?: { ok: boolean; start?: { unit: string; value: string }[]; end?: { unit: string; value: string }[]; label?: string }
+  formats: number[]
+  read: number
+  unread: DateRef[]
+  beyond: DateRef[]
+  axes: number
+  shared: boolean
+  now?: string
+  nowFrom?: DateRef
+  points: number
 }
 
 export interface TypeDef {
@@ -123,24 +152,38 @@ export interface TimelineEntry {
   typeLabel?: string
   field: string
   date: string // as the author wrote it
-  epoch?: number // years restart with each epoch
-  year: number
-  part?: number
-  endEpoch?: number
-  endYear?: number
-  endPart?: number
-  endField?: string // a period's closing field (born → died)
-  endDate?: string
-  openEnd?: boolean // a period whose end is not filled in
   text: number
   event: boolean
+  axis: string
+  pos: number // on the axis, in the calendar's step unit
+  bar?: boolean // spans more than its starting step
+  hasEnd?: boolean
+  endAxis?: string
+  endPos?: number
+  endField?: string // a period's closing field (born → died)
+  endDate?: string
+  openEnd?: boolean // a period whose end is not filled in: runs to the present
 }
 
-export interface TimelineYear {
-  epoch?: number
-  year: number
+export interface TimelinePoint {
+  axis: string
+  pos: number
+  label: string
   main: TimelineEntry
   entries: TimelineEntry[]
+}
+
+export interface TimelineMark {
+  axis: string
+  pos: number
+  label: string
+}
+
+export interface Timeline {
+  axes: { key: string; label: string }[]
+  points: TimelinePoint[]
+  boundaries: TimelineMark[]
+  now?: TimelineMark
 }
 
 export class HttpError extends Error {
@@ -191,7 +234,7 @@ export const api = {
   categories: () => get<Category[]>(`${w()}/categories`),
   category: (name: string) => get<Summary[]>(`${w()}/categories/${enc(name)}`),
   wanted: () => get<Wanted[]>(`${w()}/wanted`),
-  timeline: () => get<TimelineYear[]>(`${w()}/timeline`),
+  timeline: () => get<Timeline>(`${w()}/timeline`),
   tree: () => get<TreeNode[]>(`${w()}/tree`),
   // Stores a picture for the article's infobox; returns the name to embed.
   async uploadImage(title: string, file: Blob): Promise<{ name: string; url: string }> {
@@ -201,7 +244,9 @@ export const api = {
   // Nests an article inside another one, or at the top level with parent "".
   move: (title: string, parent: string) => send<TreeNode[]>('POST', `${w()}/move`, { title, parent }),
   types: () => get<TypeInfo[]>(`${w()}/types`),
-  saveCalendar: (calendar: Calendar, era: string) => send<World>('PUT', `${w()}/calendar`, { ...calendar, era }),
+  saveCalendar: (calendar: Calendar) => send<World>('PUT', `${w()}/calendar`, calendar),
+  previewCalendar: (calendar: Calendar, sample: string) =>
+    send<CalendarPreview>('POST', `${w()}/calendar/preview`, { calendar, sample }),
   saveTypes: (types: TypeInfo[]) => send<TypeInfo[]>('PUT', `${w()}/types`, types),
 
   source: (title: string) => get<Source>(`${w()}/source/${enc(title)}`),

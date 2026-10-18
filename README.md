@@ -79,12 +79,19 @@ range (`340–347`) as a bar below the axis — drawn in the type's color.
 Types marked as events name the years they fall in. Two date fields of a
 type can form a period (born → died), drawn as one bar.
 
-The "Calendar" page sets how time is counted: how many parts a year has (the
-number after the dot in `139.096`) and what they are called, and the epochs,
-whose years restart (`12 III Епохи`). When the lengths of all but the last
-epoch are known, the timeline lays them on one axis with their borders;
-otherwise each epoch gets a tab. The latest date in the world counts as the
-present: open periods (no death date yet) run up to it. Type and field keys are generated once
+The "Calendar" page sets how time is counted, entirely in the author's
+terms: a hierarchy of time units from the largest down (an era or epoch,
+years, months, days — whatever the world has), each written as a number, a
+Roman numeral or one of a list of names, with how many fit in the unit above
+and exceptions for particular values (`I: 500` years, `Талець: 28` days);
+and templates for how dates are written, such as
+`{Рік}[.{Частина}][ р.] {Епоха} Епохи` (`[ … ]` is optional). A range is two
+dates joined by a dash, and its first date may leave out what the second
+says. The timeline counts in one unit (the step, usually the year); units
+above it lay out one shared axis when their lengths are known, and separate
+tabs otherwise. The latest date in the world counts as the present: open
+periods run up to it. A world without a calendar counts plain years.
+Type and field keys are generated once
 from their names and never change, so renaming keeps articles working.
 
 ## Code layout

@@ -209,14 +209,19 @@ func TestSearch(t *testing.T) {
 
 func TestTimeline(t *testing.T) {
 	v := openFixture(t)
-	years := map[int]TimelineYear{}
+	tl := v.Timeline()
+	years := map[int]TimelinePoint{}
 	var order []int
-	for _, y := range v.Timeline() {
-		years[y.Year] = y
-		order = append(order, y.Year)
+	for _, p := range tl.Points {
+		years[int(p.Pos)] = p
+		order = append(order, int(p.Pos))
 	}
 	if !slices.Equal(order, []int{120, 312, 343, 389}) {
 		t.Errorf("years = %v", order)
+	}
+	// Without a calendar: plain years, labelled with the world's era.
+	if years[343].Label != "343 ЕП" || len(tl.Axes) != 1 || len(tl.Boundaries) != 0 {
+		t.Errorf("label %q, axes %v", years[343].Label, tl.Axes)
 	}
 	// Two events in 343: the longer article names the year.
 	if y := years[343]; len(y.Entries) != 2 || y.Main.Title != "Битва під Тліню" {
@@ -231,40 +236,141 @@ func TestTimeline(t *testing.T) {
 		t.Errorf("312 = %+v", y)
 	}
 	for _, e := range years[343].Entries {
-		if e.Title == "Облога Вальмора" && e.EndYear != 345 {
-			t.Errorf("range end = %d", e.EndYear)
+		if e.Title == "Облога Вальмора" && (e.EndPos != 345 || !e.Bar) {
+			t.Errorf("range = %+v", e)
+		}
+	}
+	// The present is the latest date: 389.
+	if tl.Now == nil || tl.Now.Pos != 389 {
+		t.Errorf("now = %+v", tl.Now)
+	}
+}
+
+// andromeda is a calendar like the user's: epochs (Roman numerals) at the
+// root, years restarting in each, years split into 100 parts.
+var andromeda = Calendar{
+	Units: []TimeUnit{
+		{Name: "Епоха", Write: "roman", Lengths: map[string]int{"I": 500, "II": 300}},
+		{Name: "Рік"},
+		{Name: "Частина", Per: 100},
+	},
+	Formats: []string{"{Рік}[.{Частина}][ р.] {Епоха} Епохи"},
+	Step:    "Рік",
+}
+
+// seasons names its months and has a short one.
+var seasons = Calendar{
+	Units: []TimeUnit{
+		{Name: "Ера", Write: "names", Names: []string{"Стара ера", "Нова ера"}, Lengths: map[string]int{"Стара ера": 1000}},
+		{Name: "Рік"},
+		{Name: "Місяць", Write: "names", Names: []string{"Сніжень", "Талець", "Цвітень"}, Lengths: map[string]int{"Талець": 28}},
+		{Name: "День", Per: 30},
+	},
+	Formats: []string{"{День} {Місяць} {Рік} р. {Ера}", "{Місяць} {Рік} р. {Ера}", "{Рік} р. {Ера}"},
+}
+
+func TestCalendarParse(t *testing.T) {
+	cases := []struct {
+		cal        Calendar
+		in         string
+		start, end []int // values per unit, 0 for "not given"
+		ok         bool
+	}{
+		// No calendar: the first number is the year.
+		{Calendar{}, "312 ЕП", []int{312}, nil, true},
+		{Calendar{}, "340–347 ЕП", []int{340}, []int{347}, true},
+		{Calendar{}, "120 ЕП, [[Вальмор-2]]", []int{120}, nil, true},
+		{Calendar{}, "-40", []int{-40}, nil, true},
+		{Calendar{}, "невідомо", nil, nil, false},
+
+		{andromeda, "139.096 III Епохи", []int{3, 139, 96}, nil, true},
+		{andromeda, "145 р. ІІІ Епохи", []int{3, 145, 0}, nil, true}, // Cyrillic І
+		{andromeda, "142 р. III Епохи — 145 р. III Епохи", []int{3, 142, 0}, []int{3, 145, 0}, true},
+		// The epoch written once at the end belongs to both ends.
+		{andromeda, "144.087 — 144.125 III Епохи", []int{3, 144, 87}, []int{3, 144, 125}, true},
+		{andromeda, "211-224 III Епохи", []int{3, 211, 0}, []int{3, 224, 0}, true},
+		{andromeda, "сто років тому", nil, nil, false},
+
+		{seasons, "12 Талець 450 р. Нова ера", []int{2, 450, 2, 12}, nil, true},
+		{seasons, "цвітень 3 р. Стара ера", []int{1, 3, 3, 0}, nil, true},
+		{seasons, "12 — 15 Сніжень 450 р. Нова ера", []int{2, 450, 1, 12}, []int{2, 450, 1, 15}, true},
+	}
+	for _, c := range cases {
+		cal, err := compileCalendar(c.cal, "")
+		if err != nil {
+			t.Fatal(err)
+		}
+		r, ok := cal.parse(c.in)
+		if ok != c.ok {
+			t.Errorf("%q: ok = %v", c.in, ok)
+			continue
+		}
+		if !ok {
+			continue
+		}
+		got := func(d tdate) []int {
+			out := make([]int, len(d.v))
+			for i := range d.v {
+				if d.has[i] {
+					out[i] = d.v[i]
+				}
+			}
+			return out
+		}
+		if !slices.Equal(got(r.start), c.start) || (c.end != nil) != r.hasEnd || (c.end != nil && !slices.Equal(got(r.end), c.end)) {
+			t.Errorf("%q = %v → %v (end %v); want %v → %v", c.in, got(r.start), got(r.end), r.hasEnd, c.start, c.end)
 		}
 	}
 }
 
-func TestParseDate(t *testing.T) {
-	type pt = datePoint
-	cases := []struct {
-		in         string
-		start, end pt
-		ok         bool
-	}{
-		{"312 ЕП", pt{0, 312, 0}, pt{}, true},
-		{"340–347 ЕП", pt{0, 340, 0}, pt{0, 347, 0}, true},
-		{"120 ЕП, [[Вальмор]]", pt{0, 120, 0}, pt{}, true},
-		{"-40", pt{0, -40, 0}, pt{}, true},
-		{"−200 — −150", pt{0, -200, 0}, pt{0, -150, 0}, true},
-		{"139.096 III Епохи", pt{3, 139, 96}, pt{}, true},
-		{"144.087 — 144.125 III Епохи", pt{3, 144, 87}, pt{3, 144, 125}, true},
-		{"142 р. III Епохи — 145 р. III Епохи", pt{3, 142, 0}, pt{3, 145, 0}, true},
-		{"211-224 III Епохи", pt{3, 211, 0}, pt{3, 224, 0}, true},
-		{"145 р. ІІІ Епохи", pt{3, 145, 0}, pt{}, true},  // Cyrillic І
-		{"224-2XX III Епохи", pt{3, 224, 0}, pt{}, true}, // an unknown end is dropped
-		{"V Епоха, 12", pt{5, 12, 0}, pt{}, true},
-		{"[[СМ-16]] 450", pt{0, 450, 0}, pt{}, true}, // digits inside links are not dates
-		{"невідомо", pt{}, pt{}, false},
+func TestCalendarPlacement(t *testing.T) {
+	cal, _ := compileCalendar(andromeda, "")
+	d, _ := cal.parse("12 р. III Епохи")
+	// Epochs I and II last 500 and 300 years: epoch III starts at 800.
+	if off, ok := cal.offset(d.start); !ok || off != 800 {
+		t.Errorf("offset = %v, %v", off, ok)
 	}
-	for _, c := range cases {
-		r, ok := parseDate(c.in)
-		if ok != c.ok || r.start != c.start || r.end != c.end {
-			t.Errorf("parseDate(%q) = %+v, %v; want %+v–%+v", c.in, r, ok, c.start, c.end)
-		}
+	if got := cal.stepLabel(d.start); got != "12 р. III Епохи" {
+		t.Errorf("label = %q", got)
 	}
+	if f := cal.fraction(mustParse(t, cal, "12.050 III Епохи")); f < 0.49 || f > 0.5 {
+		t.Errorf("fraction of part 50 of 100 = %v", f)
+	}
+	if !cal.beyond(mustParse(t, cal, "161.231 III Епохи")) || cal.beyond(mustParse(t, cal, "161.031 III Епохи")) {
+		t.Error("part beyond a year of 100 not caught")
+	}
+
+	// Without the length of epoch II, epoch III cannot be offset.
+	short := andromeda
+	short.Units = append([]TimeUnit{}, andromeda.Units...)
+	short.Units[0] = TimeUnit{Name: "Епоха", Write: "roman", Lengths: map[string]int{"I": 500}}
+	cal2, _ := compileCalendar(short, "")
+	if _, ok := cal2.offset(d.start); ok {
+		t.Error("offset without epoch II's length")
+	}
+
+	// Named values count from the first name; a short month places days by
+	// its own length.
+	sc, _ := compileCalendar(seasons, "")
+	n := mustParse(t, sc, "3 р. Нова ера")
+	if off, ok := sc.offset(n); !ok || off != 1000 {
+		t.Errorf("seasons offset = %v, %v", off, ok)
+	}
+	if sc.childCount(2, mustParse(t, sc, "1 Талець 3 р. Нова ера")) != 28 {
+		t.Error("Талець should have 28 days")
+	}
+	if got := sc.stepLabel(mustParse(t, sc, "12 Талець 450 р. Нова ера")); got != "450 р. Нова ера" {
+		t.Errorf("seasons label = %q", got)
+	}
+}
+
+func mustParse(t *testing.T, cal *calendar, s string) tdate {
+	t.Helper()
+	r, ok := cal.parse(s)
+	if !ok {
+		t.Fatalf("cannot read %q", s)
+	}
+	return r.start
 }
 
 func TestSplitFrontmatter(t *testing.T) {
@@ -695,13 +801,13 @@ func TestPeriods(t *testing.T) {
 	}
 
 	byTitle := map[string]TimelineEntry{}
-	for _, y := range v.Timeline() {
-		for _, e := range y.Entries {
+	for _, p := range v.Timeline().Points {
+		for _, e := range p.Entries {
 			byTitle[e.Title+"/"+e.Field] = e
 		}
 	}
 	// Born 312, died 389: one period, and the death still has its own dot.
-	if e := byTitle["Аедрін Сірий/Народження"]; e.EndYear != 389 || e.EndField != "Смерть" || e.EndDate != "389 ЕП" || e.OpenEnd {
+	if e := byTitle["Аедрін Сірий/Народження"]; e.EndPos != 389 || !e.Bar || e.EndField != "Смерть" || e.EndDate != "389 ЕП" || e.OpenEnd {
 		t.Errorf("born → died = %+v", e)
 	}
 	if _, ok := byTitle["Аедрін Сірий/Смерть"]; !ok {
@@ -726,40 +832,75 @@ func TestPeriods(t *testing.T) {
 	}
 }
 
-func TestCalendar(t *testing.T) {
+func TestCalendarSaveAndPreview(t *testing.T) {
 	files := map[string]string{}
 	for k, v := range fixture {
 		files[k] = v
 	}
 	files["world.yaml"] += "custom: kept\n"
+	files["Ера.md"] = "---\ntype: event\ninfobox:\n  date: 12 р. III Епохи\n---\n"
+	files["Пізніше.md"] = "---\ntype: event\ninfobox:\n  date: 30.120 III Епохи\n---\n"
+	files["Давно.md"] = "---\ntype: event\ninfobox:\n  date: 250 р. II Епохи\n---\n"
 	v, err := Open(writeWorld(t, files), "")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if c := v.World().Calendar; c.YearParts != 0 || len(c.Epochs) != 0 {
-		t.Fatalf("a world without a calendar has %+v", c)
+
+	// The preview reads the world with a draft calendar.
+	p := v.PreviewCalendar(andromeda, "144.087 — 144.125 III Епохи")
+	if p.Error != "" || p.Read != 3 || p.Formats[0] != 3 {
+		t.Fatalf("preview = %+v", p)
 	}
-	w, err := v.SaveCalendar(Calendar{YearParts: 100, Epochs: []EpochDef{{Name: " Ранній час ", Years: 400}, {}, {Name: "Нова ера"}}}, " Епохи ")
+	// Dates in plain years ("312 ЕП") are not in this calendar's format.
+	if len(p.Unread) != 6 {
+		t.Errorf("unread = %v", p.Unread)
+	}
+	if len(p.Beyond) != 1 || p.Beyond[0].Title != "Пізніше" {
+		t.Errorf("beyond = %v", p.Beyond)
+	}
+	if !p.Shared || p.Now != "30 р. III Епохи" || p.NowFrom == nil || p.NowFrom.Title != "Пізніше" {
+		t.Errorf("shared %v now %q from %+v", p.Shared, p.Now, p.NowFrom)
+	}
+	if p.Test == nil || !p.Test.OK || len(p.Test.Start) != 3 || p.Test.End[2].Value != "125" {
+		t.Errorf("test = %+v", p.Test)
+	}
+	if bad := v.PreviewCalendar(Calendar{Units: []TimeUnit{{Name: "Рік"}}, Formats: []string{"{Століття}"}}, ""); bad.Error == "" {
+		t.Error("a format naming an unknown unit passed")
+	}
+
+	w, err := v.SaveCalendar(andromeda)
 	if err != nil {
 		t.Fatal(err)
 	}
-	c := w.Calendar
-	if c.YearParts != 100 || len(c.Epochs) != 3 || c.Epochs[0] != (EpochDef{"Ранній час", 400}) || c.Epochs[2].Name != "Нова ера" || w.Era != "Епохи" {
-		t.Errorf("calendar after save = %+v, era %q", c, w.Era)
+	if len(w.Calendar.Units) != 3 || w.Calendar.Units[2].Per != 100 {
+		t.Errorf("saved calendar = %+v", w.Calendar)
+	}
+	tl := v.Timeline()
+	if len(tl.Axes) != 1 || len(tl.Boundaries) != 2 || tl.Boundaries[1].Label != "Епоха III" {
+		t.Errorf("shared axis: axes %v boundaries %v", tl.Axes, tl.Boundaries)
 	}
 	raw, _ := os.ReadFile(filepath.Join(v.Root(), "world.yaml"))
 	if !strings.Contains(string(raw), "custom: kept") || !strings.Contains(string(raw), "type: date") {
 		t.Errorf("other settings lost:\n%s", raw)
 	}
-	if _, err := v.SaveCalendar(Calendar{YearParts: -1}, ""); !errors.As(err, new(*InvalidError)) {
-		t.Errorf("negative parts: %v", err)
+
+	// Without epoch lengths each epoch gets its own axis.
+	noLengths := andromeda
+	noLengths.Units = append([]TimeUnit{}, andromeda.Units...)
+	noLengths.Units[0] = TimeUnit{Name: "Епоха", Write: "roman"}
+	if _, err := v.SaveCalendar(noLengths); err != nil {
+		t.Fatal(err)
 	}
-	// Clearing everything removes the section.
-	if _, err := v.SaveCalendar(Calendar{}, ""); err != nil {
+	if tl := v.Timeline(); len(tl.Axes) != 2 || tl.Axes[0].Label != "Епоха II" || len(tl.Boundaries) != 0 {
+		t.Errorf("separate axes: %v", tl.Axes)
+	}
+
+	// Clearing the units removes the section: plain years again.
+	if _, err := v.SaveCalendar(Calendar{}); err != nil {
 		t.Fatal(err)
 	}
 	raw, _ = os.ReadFile(filepath.Join(v.Root(), "world.yaml"))
-	if strings.Contains(string(raw), "calendar") || strings.Contains(string(raw), "era:") {
+	if strings.Contains(string(raw), "calendar") {
 		t.Errorf("empty calendar left in world.yaml:\n%s", raw)
 	}
 }

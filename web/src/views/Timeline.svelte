@@ -1,35 +1,32 @@
 <script lang="ts">
   import { onMount, untrack } from 'svelte'
   import Icon from '../components/Icon.svelte'
-  import { api, currentWorld, pageHref, worldHref, type TimelineEntry, type TimelineYear } from '../lib/api'
+  import { api, currentWorld, pageHref, worldHref, type Timeline, type TimelineEntry, type TimelinePoint } from '../lib/api'
   import { navigate, router } from '../lib/router.svelte'
   import { store } from '../lib/store.svelte'
   import { plural } from '../lib/format'
   import { typeColor } from '../lib/colors'
-  import { epochName, epochOffsets, presentMoment, yearFraction, yearLabel } from '../lib/calendar'
 
-  let all = $state<TimelineYear[] | null>(null)
+  // The server reads dates with the world's calendar and places them: on one
+  // shared axis, or on several (tabs) when the calendar cannot say how long
+  // the units above its step are. Positions count in the step unit.
+  let data = $state<Timeline | null>(null)
   let width = $state(0) // of the stage, which narrows when the panel opens
   let stage = $state<HTMLDivElement>()
 
-  // The visible stretch of the axis. Positions on it are years, plus the
-  // year's fraction for a date with a part (139.096), plus the epoch's start
-  // when epochs share one axis. Zooming and panning change it; selecting a
-  // year animates it.
+  // The visible stretch of the axis. Zooming and panning change it;
+  // selecting a point animates it.
   let from = $state(0)
   let to = $state(1)
 
   const PAD = 70 // px kept clear at both ends of the axis
-  const FOCUS = 0.5 // a selected year settles in the middle of the visible stage
+  const FOCUS = 0.5 // a selected point settles in the middle of the visible stage
 
-  // Years restart with each epoch. When the calendar knows how long the
-  // earlier epochs lasted they share one axis; otherwise each epoch gets its
-  // own and tabs switch between them.
-  const epochs = $derived([...new Set((all ?? []).map((y) => y.epoch ?? 0))].sort((a, b) => a - b))
-  const offsets = $derived(epochOffsets(store.world, epochs))
-  const shared = $derived(!!offsets)
-  const epoch = $derived(router.query.has('epoch') ? Number(router.query.get('epoch')) : (epochs.at(-1) ?? 0))
-  const epochYears = $derived(all ? (shared ? all : all.filter((y) => (y.epoch ?? 0) === epoch)) : null)
+  const axes = $derived(data?.axes ?? [])
+  const axis = $derived(router.query.get('axis') ?? axes.at(-1)?.key ?? '')
+  const axisPoints = $derived(data ? data.points.filter((p) => p.axis === axis) : null)
+  const boundaries = $derived(data?.boundaries ?? [])
+  const now = $derived(data?.now && data.now.axis === axis ? data.now : null)
 
   // Filters, remembered per world in this browser: types hidden altogether,
   // and types whose bars are hidden while their dots stay.
@@ -55,81 +52,54 @@
     else list.push(type)
   }
 
-  // The years shown: hidden types drop out, and a year's name goes to its
+  // The points shown: hidden types drop out, and a point's name goes to its
   // most important entry still visible.
-  const years = $derived.by(() => {
-    if (!epochYears) return null
-    const out: TimelineYear[] = []
-    for (const y of epochYears) {
-      const entries = y.entries.filter((e) => !filters.hidden.includes(e.type ?? ''))
-      if (entries.length) out.push({ ...y, entries, main: entries[0] })
+  const points = $derived.by(() => {
+    if (!axisPoints) return null
+    const out: TimelinePoint[] = []
+    for (const p of axisPoints) {
+      const entries = p.entries.filter((e) => !filters.hidden.includes(e.type ?? ''))
+      if (entries.length) out.push({ ...p, entries, main: entries[0] })
     }
     return out
   })
 
-  const keyOf = (y: { epoch?: number; year: number }) => `${y.epoch ?? 0}:${y.year}`
-  const label = (y: { epoch?: number; year: number }) => yearLabel(store.world, y.epoch ?? 0, y.year)
-
-  // --- positions ----------------------------------------------------------
-
-  // Whether an epoch is drawn on the current axis.
-  const onAxis = (e: number) => shared || e === epoch
-  const posOf = (e: number, year: number, part = 0) =>
-    (offsets?.get(e) ?? 0) + year + yearFraction(store.world, part)
-  const yearPos = (y: TimelineYear) => posOf(y.epoch ?? 0, y.year)
-  const startPos = (e: TimelineEntry) => posOf(e.epoch ?? 0, e.year, e.part)
-
-  // The present is the latest date in the world: open periods (still alive,
-  // still standing) run up to it.
-  const now = $derived(all ? presentMoment(all) : null)
-  const nowPos = $derived(now && onAxis(now.epoch) ? posOf(now.epoch, now.year, now.part) : null)
+  const keyOf = (p: { axis: string; pos: number }) => `${p.axis}|${p.pos}`
 
   // Where an entry's bar ends: its own end, the present for an open period,
-  // or off the end of the axis when that lies in an epoch not shown.
+  // or off the end of the axis when that lies on another one.
   function endPos(e: TimelineEntry) {
-    if (e.endYear) {
-      const ep = e.endEpoch ?? e.epoch ?? 0
-      return onAxis(ep) ? posOf(ep, e.endYear, e.endPart) : Infinity
-    }
-    if (e.openEnd) return nowPos ?? Infinity
-    return startPos(e)
-  }
-  // A period inside one year (144.087 — 144.125) is just its dot.
-  function isBar(e: TimelineEntry) {
-    if (e.endYear) return (e.endEpoch ?? e.epoch ?? 0) !== (e.epoch ?? 0) || e.endYear > e.year
-    if (e.openEnd) return !now || now.epoch !== (e.epoch ?? 0) || now.year > e.year
-    return false
+    if (e.hasEnd) return e.endAxis === e.axis ? e.endPos! : Infinity
+    if (e.openEnd) return now ? now.pos : Infinity
+    return e.pos
   }
 
   const name = (e: TimelineEntry) => (e.event ? e.title : `${e.title} (${e.field.toLowerCase()})`)
   const fullDate = (e: TimelineEntry) => (e.endField ? `${e.date} — ${e.endDate || 'досі'}` : e.date)
 
-  const selectedKey = $derived(
-    router.query.has('year') ? `${router.query.get('epoch') ?? epoch}:${router.query.get('year')}` : null,
-  )
-  const selected = $derived(years?.find((y) => keyOf(y) === selectedKey) ?? null)
-  const selectedIndex = $derived(years && selected ? years.indexOf(selected) : -1)
+  const selectedKey = $derived(router.query.has('at') ? `${axis}|${router.query.get('at')}` : null)
+  const selected = $derived(points?.find((p) => keyOf(p) === selectedKey) ?? null)
+  const selectedIndex = $derived(points && selected ? points.indexOf(selected) : -1)
 
   document.title = `Таймлайн — ${store.world?.name}`
 
   onMount(async () => {
-    all = await api.timeline()
+    data = await api.timeline()
   })
 
-  // A fresh view whenever the axis changes: another epoch, or epochs joined.
+  // A fresh view for each axis shown.
   let shownAxis: string | null = null
   $effect(() => {
-    const axis = shared ? 'shared' : String(epoch)
-    if (!years || axis === shownAxis) return
+    if (!points || axis === shownAxis) return
     shownAxis = axis
     untrack(() => ([from, to] = fullRange()))
   })
 
   function fullRange(): [number, number] {
-    if (!years?.length) return [0, 1]
-    const first = Math.min(...years.map(yearPos))
-    // Ranges can end after the last year that starts anything.
-    const ends = years.flatMap((y) => [yearPos(y), ...y.entries.map(endPos).filter(Number.isFinite)])
+    if (!points?.length) return [0, 1]
+    const first = Math.min(...points.map((p) => p.pos))
+    // Ranges can end after the last point that starts anything.
+    const ends = points.flatMap((p) => [p.pos, ...p.entries.map(endPos).filter(Number.isFinite)])
     const last = Math.max(...ends)
     const margin = Math.max((last - first) * 0.04, 5)
     return [first - margin, last + margin]
@@ -144,40 +114,40 @@
 
   const x = (p: number) => PAD + ((p - from) / (to - from)) * Math.max(width - 2 * PAD, 1)
 
-  // More events in a year, bigger dot.
-  const radius = (y: TimelineYear) => Math.min(28, 6 + 5 * Math.sqrt(y.entries.length - 1))
+  // More events in a step, bigger dot.
+  const radius = (p: TimelinePoint) => Math.min(28, 6 + 5 * Math.sqrt(p.entries.length - 1))
 
-  const labelHalf = (y: TimelineYear) => Math.min(170, Math.max(name(y.main).length, 8) * 7.4) / 2 + 8
+  const labelHalf = (p: TimelinePoint) => Math.min(170, Math.max(name(p.main).length, 8) * 7.4) / 2 + 8
 
   // Shifts a label sideways so it stays inside the stage near either edge.
-  const labelShift = (y: TimelineYear) => {
-    const cx = x(yearPos(y))
-    const half = labelHalf(y)
+  const labelShift = (p: TimelinePoint) => {
+    const cx = x(p.pos)
+    const half = labelHalf(p)
     return Math.max(half - cx, 0) - Math.max(cx + half - width, 0)
   }
 
-  // Labels compete for space: the selected year first, then the busiest
-  // years, above the axis, then below; a label that fits nowhere shows only
-  // on hover.
+  // Labels compete for space: the selected point first, then the busiest,
+  // above the axis, then below; a label that fits nowhere shows only on
+  // hover.
   const placement = $derived.by(() => {
     const rows: [number, number][][] = [[], []]
     const out = new Map<string, 0 | 1>()
-    if (!years) return out
-    const byWeight = [...years].sort(
+    if (!points) return out
+    const byWeight = [...points].sort(
       (a, b) =>
         Number(b === selected) - Number(a === selected) ||
         b.entries.length - a.entries.length ||
         b.main.text - a.main.text,
     )
-    for (const y of byWeight) {
-      const dot = x(yearPos(y))
+    for (const p of byWeight) {
+      const dot = x(p.pos)
       if (dot < 0 || dot > width) continue // off-screen dots get no label
-      const cx = dot + labelShift(y)
-      const half = labelHalf(y)
+      const cx = dot + labelShift(p)
+      const half = labelHalf(p)
       for (const row of [0, 1] as const) {
         if (rows[row].every(([a, b]) => cx + half < a || cx - half > b)) {
           rows[row].push([cx - half, cx + half])
-          out.set(keyOf(y), row)
+          out.set(keyOf(p), row)
           break
         }
       }
@@ -185,16 +155,16 @@
     return out
   })
 
-  // Ranges (340–347) are drawn as bars below the axis. Bars that overlap in
-  // time go to separate lanes; a lane is reused once its last bar has ended.
+  // Ranges and periods are drawn as bars below the axis. Bars that overlap
+  // go to separate lanes; a lane is reused once its last bar has ended.
   const SPANS_TOP = 110 // px below the axis, clear of the lower labels
   const LANE = 26 // px per lane
 
   const spans = $derived.by(() => {
-    if (!years) return []
-    const ranges = years
-      .flatMap((y) => y.entries.filter((e) => isBar(e) && !filters.noBars.includes(e.type ?? '')))
-      .map((e) => ({ ...e, start: startPos(e), end: endPos(e) }))
+    if (!points) return []
+    const ranges = points
+      .flatMap((p) => p.entries.filter((e) => e.bar && !filters.noBars.includes(e.type ?? '')))
+      .map((e) => ({ ...e, start: e.pos, end: endPos(e) }))
     ranges.sort((a, b) => a.start - b.start || b.end - a.end)
     const laneEnds: number[] = []
     return ranges.map((r) => {
@@ -205,21 +175,20 @@
     })
   })
 
-  // Ranges still going on in the selected year, started earlier.
+  // Ranges still going on at the selected point, started earlier.
   const ongoing = $derived.by(() => {
     if (!selected) return []
-    const at = yearPos(selected)
-    return spans.filter((s) => s.start < at && s.end >= at && keyOf(s) !== keyOf(selected))
+    return spans.filter((s) => s.start < selected.pos && s.end >= selected.pos)
   })
 
   // Every type on this axis, hidden ones included so they can come back.
   const legend = $derived.by(() => {
     const seen = new Map<string, { label: string; bars: boolean }>()
-    for (const y of epochYears ?? [])
-      for (const e of y.entries) {
+    for (const p of axisPoints ?? [])
+      for (const e of p.entries) {
         if (!e.type) continue
         const t = seen.get(e.type) ?? { label: e.typeLabel ?? e.type, bars: false }
-        t.bars ||= isBar(e)
+        t.bars ||= !!e.bar
         seen.set(e.type, t)
       }
     return [...seen].map(([type, t]) => ({ type, ...t, color: typeColor(type) }))
@@ -227,84 +196,74 @@
   const barTypes = $derived(legend.filter((l) => l.bars))
   let barsMenu = $state(false)
 
-  // The epoch a position on a shared axis falls in, and the year within it.
-  function inEpoch(p: number): { epoch: number; year: number } {
-    if (!offsets) return { epoch, year: p }
-    let found = { epoch: 1, year: p }
-    for (const [e, at] of offsets) if (p >= at) found = { epoch: e, year: p - at }
-    return found
-  }
-
-  // Axis ticks at a round step: 1, 2 or 5 × 10ⁿ years, about 110px apart,
-  // labelled with the year inside its epoch.
+  // Axis ticks at a round step: 1, 2 or 5 × 10ⁿ, about 110px apart. On a
+  // shared axis a tick is labelled by its count inside the part it falls in.
   const ticks = $derived.by(() => {
     const span = to - from
     const rough = span / Math.max((width - 2 * PAD) / 110, 1)
     const pow = 10 ** Math.floor(Math.log10(Math.max(rough, 1)))
     const step = [1, 2, 5, 10].map((m) => m * pow).find((s) => s >= rough) ?? 10 * pow
     const out: { at: number; label: number }[] = []
-    for (let t = Math.ceil(from / step) * step; t <= to; t += step) out.push({ at: t, label: Math.round(inEpoch(t).year) })
+    for (let t = Math.ceil(from / step) * step; t <= to; t += step) {
+      const b = [...boundaries].reverse().find((m) => m.pos <= t)
+      out.push({ at: t, label: Math.round(t - (b?.pos ?? 0)) })
+    }
     return out
   })
-
-  // Where each epoch begins on a shared axis.
-  const boundaries = $derived(
-    offsets ? [...offsets].map(([e, at]) => ({ epoch: e, at })).filter((b) => b.at > from && b.at < to) : [],
-  )
+  const visibleBoundaries = $derived(boundaries.filter((b) => b.pos > from && b.pos < to))
 
   // --- selection --------------------------------------------------------
 
-  function select(y: { epoch?: number; year: number } | null, tab = epoch) {
+  function select(p: { axis: string; pos: number } | null, onAxis = axis) {
     const q = new URLSearchParams()
-    const e = y ? (y.epoch ?? 0) : tab
-    if (epochs.length > 1 || e) q.set('epoch', String(e))
-    if (y) q.set('year', String(y.year))
+    if (axes.length > 1) q.set('axis', p ? p.axis : onAxis)
+    if (p) q.set('at', String(p.pos))
     navigate(worldHref(undefined, '/timeline' + (q.size ? '?' + q : '')), { replace: true })
   }
 
-  // Zoom in on a newly selected year (also when opened from a ?year= link).
+  // Zoom in on a newly selected point (also when opened from a link).
   let lastFocused: string | null = null
   $effect(() => {
-    const y = selected
-    if (!y) {
+    const p = selected
+    if (!p) {
       lastFocused = null
       return
     }
-    if (keyOf(y) === lastFocused || !width) return
-    lastFocused = keyOf(y)
+    if (keyOf(p) === lastFocused || !width) return
+    lastFocused = keyOf(p)
     untrack(() => {
       const [min, max] = fullRange()
       const span = Math.min(to - from, Math.max(12, (max - min) / 6))
-      animateTo(() => focusRange(yearPos(y), span))
+      animateTo(() => focusRange(p.pos, span))
     })
   })
 
   // The target is re-read every frame: the stage narrows while the panel
-  // slides in, and the selected year should land at FOCUS of the final width.
+  // slides in, and the selected point should land at FOCUS of the final width.
   let frame = 0
   function animateTo(target: () => [number, number]) {
     cancelAnimationFrame(frame)
     const [f0, t0] = [from, to]
     const start = performance.now()
     const duration = matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 600
-    const tick = (now: number) => {
-      const k = duration ? Math.min((now - start) / duration, 1) : 1
+    const tick = (t: number) => {
+      const k = duration ? Math.min((t - start) / duration, 1) : 1
       const e = 1 - (1 - k) ** 3
-      const [f, t] = target()
+      const [f, tt] = target()
       from = f0 + (f - f0) * e
-      to = t0 + (t - t0) * e
+      to = t0 + (tt - t0) * e
       if (k < 1) frame = requestAnimationFrame(tick)
     }
     frame = requestAnimationFrame(tick)
   }
 
   function onKeydown(e: KeyboardEvent) {
-    if (!years?.length || (e.target as Element).closest('input, textarea')) return
+    if (!points?.length || (e.target as Element).closest('input, textarea')) return
     if (e.key === 'Escape' && barsMenu) barsMenu = false
     else if (e.key === 'Escape') select(null)
     else if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
       const i = selectedIndex < 0 ? 0 : selectedIndex + (e.key === 'ArrowRight' ? 1 : -1)
-      if (years[i]) select(years[i])
+      if (points[i]) select(points[i])
     }
   }
 
@@ -392,11 +351,11 @@
   >
     <div class="bar">
       <h1>Таймлайн</h1>
-      {#if epochs.length > 1 && !shared}
-        <div class="epochs" role="tablist" aria-label="Епохи">
-          {#each epochs as e (e)}
-            <button role="tab" class:on={e === epoch} aria-selected={e === epoch} onclick={() => select(null, e)}>
-              {e ? epochName(store.world, e) : 'Без епохи'}
+      {#if axes.length > 1}
+        <div class="epochs" role="tablist" aria-label="Частини шкали">
+          {#each axes as a (a.key)}
+            <button role="tab" class:on={a.key === axis} aria-selected={a.key === axis} onclick={() => select(null, a.key)}>
+              {a.label || 'Шкала'}
             </button>
           {/each}
         </div>
@@ -444,7 +403,7 @@
       </div>
     {/if}
 
-    {#if all && !all.length}
+    {#if data && !data.points.length}
       <div class="empty">
         <p>На таймлайні поки нічого немає.</p>
         <p class="muted">
@@ -452,36 +411,36 @@
           заповніть його в статтях: <code>343</code> для події або <code>340–347</code> для відрізка.
         </p>
       </div>
-    {:else if years}
+    {:else if points}
       <div class="axis"></div>
       {#each ticks as t (t.at)}
         <div class="tick" style:left="{x(t.at)}px"><span>{t.label}</span></div>
       {/each}
-      {#each boundaries as b (b.epoch)}
-        <div class="boundary" style:left="{x(b.at)}px"><span>{epochName(store.world, b.epoch)}</span></div>
+      {#each visibleBoundaries as b (b.pos + b.label)}
+        <div class="boundary" style:left="{x(b.pos)}px"><span>{b.label}</span></div>
       {/each}
-      {#if nowPos !== null && nowPos >= from && nowPos <= to}
-        <div class="now" style:left="{x(nowPos)}px" title="Найпізніша дата у світі">
-          <span>Зараз · {now && label(now)}</span>
+      {#if now && now.pos >= from && now.pos <= to}
+        <div class="now" style:left="{x(now.pos)}px" title="Найпізніша дата у світі">
+          <span>Зараз · {now.label}</span>
         </div>
       {/if}
 
-      {#each years as y (keyOf(y))}
+      {#each points as y (keyOf(y))}
         {@const r = radius(y)}
         {@const row = placement.get(keyOf(y))}
         <button
           class="point"
           class:selected={selected === y}
           class:labelled={row !== undefined}
-          style:left="{x(yearPos(y))}px"
+          style:left="{x(y.pos)}px"
           style:--r="{r}px"
           style:--c={typeColor(y.main.type)}
           onclick={() => select(y)}
-          aria-label="{label(y)}: {name(y.main)}, {plural(y.entries.length, ['подія', 'події', 'подій'])}"
+          aria-label="{y.label}: {name(y.main)}, {plural(y.entries.length, ['подія', 'події', 'подій'])}"
         >
           <span class="dot"></span>
           <span class="label" class:below={row === 1} style:--shift="{labelShift(y)}px">
-            <span class="year">{label(y)}</span>
+            <span class="year">{y.label}</span>
             <span class="name">{name(y.main)}</span>
           </span>
         </button>
@@ -493,7 +452,7 @@
         {#if x2 > -20 && x1 < width + 20}
           <button
             class="span"
-            class:active={selected && Math.floor(s.start) <= yearPos(selected) && s.end >= yearPos(selected)}
+            class:active={selected && Math.floor(s.start) <= selected.pos && s.end >= selected.pos}
             style:left="{x1}px"
             style:width="{Math.max(x2 - x1, 6)}px"
             style:top="calc(var(--axis) + {SPANS_TOP + s.lane * LANE}px)"
@@ -514,19 +473,19 @@
       <header>
         <span class="big-dot" style:--r="{radius(selected)}px" style:--c={typeColor(selected.main.type)}></span>
         <div class="heading">
-          <div class="year">{label(selected)}</div>
+          <div class="year">{selected.label}</div>
           <a class="main" href={pageHref(selected.main.title)}>{name(selected.main)}</a>
         </div>
         <button class="icon" onclick={() => select(null)} aria-label="Закрити"><Icon name="close" size={18} /></button>
       </header>
 
       <div class="nav">
-        <button disabled={selectedIndex <= 0} onclick={() => select(years![selectedIndex - 1])}>
-          ← {years![selectedIndex - 1]?.year ?? ''}
+        <button disabled={selectedIndex <= 0} onclick={() => select(points![selectedIndex - 1])}>
+          ← {points![selectedIndex - 1]?.label ?? ''}
         </button>
         <span class="muted">{plural(selected.entries.length, ['стаття', 'статті', 'статей'])}</span>
-        <button disabled={selectedIndex >= years!.length - 1} onclick={() => select(years![selectedIndex + 1])}>
-          {years![selectedIndex + 1]?.year ?? ''} →
+        <button disabled={selectedIndex >= points!.length - 1} onclick={() => select(points![selectedIndex + 1])}>
+          {points![selectedIndex + 1]?.label ?? ''} →
         </button>
       </div>
 

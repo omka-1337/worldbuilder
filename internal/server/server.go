@@ -40,6 +40,7 @@ func New(lib *library.Library, ui fs.FS) http.Handler {
 	mux.HandleFunc("GET "+w+"/tree", s.inWorld(s.tree))
 	mux.HandleFunc("POST "+w+"/move", s.inWorld(s.move))
 	mux.HandleFunc("PUT "+w+"/calendar", s.inWorld(s.saveCalendar))
+	mux.HandleFunc("POST "+w+"/calendar/preview", s.inWorld(s.previewCalendar))
 	mux.HandleFunc("GET "+w+"/types", s.inWorld(s.types))
 	mux.HandleFunc("PUT "+w+"/types", s.inWorld(s.saveTypes))
 	mux.HandleFunc("GET /w/{world}/files/{path...}", s.inWorld(s.file))
@@ -171,20 +172,29 @@ func (s *server) move(w http.ResponseWriter, r *http.Request, v *vault.Vault) {
 }
 
 func (s *server) saveCalendar(w http.ResponseWriter, r *http.Request, v *vault.Vault) {
-	var req struct {
-		vault.Calendar
-		Era string `json:"era"`
-	}
-	if err := json.NewDecoder(io.LimitReader(r.Body, 1<<16)).Decode(&req); err != nil {
+	var cal vault.Calendar
+	if err := json.NewDecoder(io.LimitReader(r.Body, 1<<16)).Decode(&cal); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	world, err := v.SaveCalendar(req.Calendar, req.Era)
+	world, err := v.SaveCalendar(cal)
 	if err != nil {
 		writeError(w, err)
 		return
 	}
 	writeJSON(w, world)
+}
+
+func (s *server) previewCalendar(w http.ResponseWriter, r *http.Request, v *vault.Vault) {
+	var req struct {
+		Calendar vault.Calendar `json:"calendar"`
+		Sample   string         `json:"sample"`
+	}
+	if err := json.NewDecoder(io.LimitReader(r.Body, 1<<16)).Decode(&req); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	writeJSON(w, v.PreviewCalendar(req.Calendar, req.Sample))
 }
 
 func (s *server) types(w http.ResponseWriter, r *http.Request, v *vault.Vault) {

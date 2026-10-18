@@ -37,6 +37,7 @@ type Vault struct {
 	idx   *index
 
 	cfgMu sync.Mutex // serializes writes to world.yaml
+	cal   *calendar  // the world's calendar, compiled; guarded by mu
 }
 
 type index struct {
@@ -80,7 +81,7 @@ func (v *Vault) Reload() error {
 		return err
 	}
 	v.mu.Lock()
-	v.world, v.idx = world, idx
+	v.world, v.idx, v.cal = world, idx, worldCalendar(world)
 	v.mu.Unlock()
 	return nil
 }
@@ -92,8 +93,19 @@ func (v *Vault) rescanLocked() error {
 	if err != nil {
 		return err
 	}
-	v.world, v.idx = world, idx
+	v.world, v.idx, v.cal = world, idx, worldCalendar(world)
 	return nil
+}
+
+// worldCalendar compiles the world's calendar. One that does not compile
+// (hand-edited world.yaml) is logged and the world counts plain years.
+func worldCalendar(w World) *calendar {
+	cal, err := compileCalendar(w.Calendar, w.Era)
+	if err != nil {
+		log.Printf("calendar: %v", err)
+		cal, _ = compileCalendar(Calendar{}, w.Era)
+	}
+	return cal
 }
 
 // scan reads world.yaml and every article from disk into a fresh index.
