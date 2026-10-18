@@ -32,8 +32,8 @@ type Page struct {
 
 // Field is one infobox row as written in the frontmatter.
 type Field struct {
-	Key   string
-	Value string
+	Key   string `json:"key"`
+	Value string `json:"value"`
 }
 
 type frontmatter struct {

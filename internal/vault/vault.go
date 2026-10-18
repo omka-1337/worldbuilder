@@ -270,7 +270,6 @@ type View struct {
 	HTML           string    `json:"html"`
 	Headings       []Heading `json:"headings"`
 	Backlinks      []string  `json:"backlinks"`
-	Raw            string    `json:"raw"`
 	Modified       time.Time `json:"modified"`
 }
 
@@ -303,7 +302,6 @@ func (v *Vault) Get(title string) (*View, error) {
 		HTML:       html,
 		Headings:   headings,
 		Backlinks:  v.sortedTitles(v.idx.backlinks[p]),
-		Raw:        string(p.Raw),
 		Modified:   p.ModTime,
 	}
 	if Key(p.Title) != Key(title) {

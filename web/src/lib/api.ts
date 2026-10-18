@@ -57,8 +57,17 @@ export interface PageView {
   html: string
   headings: Heading[]
   backlinks: string[]
-  raw: string
   modified: string
+}
+
+// An article as the editor form sees it; the server turns it into the file.
+export interface Source {
+  exists: boolean
+  type: string
+  aliases: string[]
+  categories: string[]
+  infobox: { key: string; value: string }[]
+  body: string
 }
 
 export interface Hit {
@@ -136,9 +145,10 @@ export const api = {
   types: () => get<TypeInfo[]>(`${w()}/types`),
   saveTypes: (types: TypeInfo[]) => send<TypeInfo[]>('PUT', `${w()}/types`, types),
 
+  source: (title: string) => get<Source>(`${w()}/source/${enc(title)}`),
   // Resolves to the title the page ended up with.
-  save: async (title: string, content: string) =>
-    (await send<{ title: string }>('PUT', `${w()}/pages/${enc(title)}`, { content })).title,
+  saveSource: async (title: string, source: Omit<Source, 'exists'>) =>
+    (await send<{ title: string }>('PUT', `${w()}/source/${enc(title)}`, source)).title,
 }
 
 // Same normalization as vault.Key on the server.

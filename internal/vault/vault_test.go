@@ -334,3 +334,52 @@ func TestSaveTypes(t *testing.T) {
 		t.Errorf("duplicate key: %v", err)
 	}
 }
+
+func TestSourceRoundTrip(t *testing.T) {
+	files := map[string]string{}
+	for k, v := range fixture {
+		files[k] = v
+	}
+	files["Вальмор.md"] = "---\ntitle: Вальмор\ncustom: kept\ntype: location\ninfobox:\n  founded: 120 ЕП\n---\nТекст.\n"
+	v, err := Open(writeWorld(t, files), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	src := v.Source("Вальмор")
+	if !src.Exists || src.Type != "location" || src.Infobox[0] != (Field{"founded", "120 ЕП"}) || src.Body != "Текст.\n" {
+		t.Fatalf("source = %+v", src)
+	}
+
+	// Values that need quoting in YAML must survive; empty ones are dropped;
+	// unknown keys stay.
+	src.Infobox = []Field{{"founded", "[[Аедрін Сірий]]: 120"}, {"ruler", ""}, {"Мотто", "- вогонь"}}
+	src.Categories = []string{"Міста", " ", "міста"}
+	src.Aliases = nil
+	if _, err := v.SaveSource("Вальмор", src); err != nil {
+		t.Fatal(err)
+	}
+	raw, _ := os.ReadFile(filepath.Join(v.Root(), "Вальмор.md"))
+	if !strings.Contains(string(raw), "custom: kept") || strings.Contains(string(raw), "ruler") || strings.Contains(string(raw), "aliases") {
+		t.Errorf("file after save:\n%s", raw)
+	}
+	again := v.Source("Вальмор")
+	if len(again.Infobox) != 2 || again.Infobox[0].Value != "[[Аедрін Сірий]]: 120" || again.Infobox[1].Value != "- вогонь" {
+		t.Errorf("infobox after round trip = %+v", again.Infobox)
+	}
+	if len(again.Categories) != 1 {
+		t.Errorf("categories = %v", again.Categories)
+	}
+
+	// A new page with nothing but text has no frontmatter at all.
+	if _, err := v.SaveSource("Нова", Source{Body: "Просто текст.\n"}); err != nil {
+		t.Fatal(err)
+	}
+	raw, _ = os.ReadFile(filepath.Join(v.Root(), "Нова.md"))
+	if string(raw) != "Просто текст.\n" {
+		t.Errorf("new page file = %q", raw)
+	}
+	if missing := v.Source("Немає"); missing.Exists {
+		t.Error("missing page reported as existing")
+	}
+}

@@ -34,8 +34,10 @@ Documents/Worldbuilder/
 ```
 
 Every `.md` file in a world (outside hidden folders) is an article. The file
-name is the title unless the frontmatter sets `title`. Files can be edited in
-any editor; changes are picked up automatically.
+name is the title unless the frontmatter sets `title`. In the app, articles
+are edited through a form — type, infobox fields, other names, categories —
+next to the text; the frontmatter below is what the form writes. Files can
+also be edited in any editor; changes are picked up automatically.
 
 ```markdown
 ---

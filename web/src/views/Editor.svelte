@@ -1,55 +1,98 @@
 <script lang="ts">
-  import { onMount } from 'svelte'
-  import { api, NotFoundError, pageHref, worldHref } from '../lib/api'
+  import { onMount, tick } from 'svelte'
+  import Icon from '../components/Icon.svelte'
+  import ChipsInput from '../components/ChipsInput.svelte'
+  import { api, pageHref, worldHref, type FieldDef } from '../lib/api'
   import { navigate } from '../lib/router.svelte'
   import { store, refresh } from '../lib/store.svelte'
 
   let { title }: { title: string } = $props()
 
-  let content = $state('')
-  let saved = $state('')
   let isNew = $state(false)
   let loading = $state(true)
   let saving = $state(false)
   let error = $state('')
 
-  const dirty = $derived(content !== saved)
+  // The form. Infobox values are kept by field key, so switching the type
+  // back and forth does not lose what was typed.
+  let type = $state('')
+  let values = $state<Record<string, string>>({})
+  let extras = $state<string[]>([]) // fields of this article only, not of its type
+  let aliases = $state<string[]>([])
+  let categories = $state<string[]>([])
+  let body = $state('')
+
+  let loadedType = ''
+  let saved = $state('')
+  let allCategories = $state<string[]>([])
+  let newField = $state('')
+  let addingField = $state(false)
+  let newFieldInput = $state<HTMLInputElement>()
+
   const types = $derived(Object.entries(store.world?.types ?? {}).sort((a, b) => a[1].label.localeCompare(b[1].label)))
+  const schema = $derived<FieldDef[]>(store.world?.types[type]?.fields ?? [])
+  const era = $derived(store.world?.era ? ' ' + store.world.era : '')
 
   onMount(async () => {
     document.title = `Редагування: ${title} — ${store.world?.name}`
+    api.categories().then((c) => (allCategories = c.map((x) => x.name)))
     try {
-      content = saved = (await api.page(title)).raw
+      const src = await api.source(title)
+      isNew = !src.exists
+      type = loadedType = src.type
+      aliases = src.aliases
+      categories = src.categories
+      body = src.exists ? src.body : `**${title}** — \n`
+      const known = new Set((store.world?.types[src.type]?.fields ?? []).map((f) => f.key))
+      for (const f of src.infobox) {
+        values[f.key] = f.value
+        if (!known.has(f.key)) extras.push(f.key)
+      }
+      saved = JSON.stringify(build())
     } catch (e) {
-      if (!(e instanceof NotFoundError)) error = String(e)
-      isNew = true
-      content = template('')
+      error = String(e)
     }
     loading = false
   })
 
-  // A new article starts with frontmatter for the chosen type: its infobox
-  // fields are listed empty, ready to fill in.
-  function template(type: string) {
-    const def = store.world?.types[type]
-    const lines = ['---']
-    if (type) lines.push(`type: ${type}`)
-    lines.push('categories: []')
-    if (def?.fields.length) {
-      lines.push('infobox:')
-      for (const f of def.fields) lines.push(`  ${f.key}:`)
-    }
-    lines.push('---', `**${title}** — `, '')
-    return lines.join('\n')
+  function build() {
+    const infobox = [...schema.map((f) => f.key), ...extras].map((key) => ({ key, value: values[key] ?? '' }))
+    return { type, aliases, categories, infobox, body }
+  }
+
+  const dirty = $derived(!loading && JSON.stringify(build()) !== saved)
+
+  // Values typed into the old type's fields go away if the type changes.
+  const dropped = $derived.by(() => {
+    if (type === loadedType) return []
+    const now = new Set([...schema.map((f) => f.key), ...extras])
+    return (store.world?.types[loadedType]?.fields ?? []).filter((f) => !now.has(f.key) && values[f.key]?.trim())
+  })
+
+  async function addField(e: SubmitEvent) {
+    e.preventDefault()
+    const key = newField.trim()
+    if (!key) return
+    if (!extras.includes(key) && !schema.some((f) => f.key === key)) extras.push(key)
+    newField = ''
+    addingField = false
+    await tick()
+    document.getElementById(`field-${key}`)?.focus()
+  }
+
+  async function startAddingField() {
+    addingField = true
+    await tick()
+    newFieldInput?.focus()
   }
 
   async function save() {
-    if (saving) return
+    if (saving || loading) return
     saving = true
     error = ''
     try {
-      const newTitle = await api.save(title, content)
-      saved = content
+      const newTitle = await api.saveSource(title, build())
+      saved = JSON.stringify(build())
       await refresh()
       navigate(pageHref(newTitle), { replace: true })
     } catch (e) {
@@ -61,88 +104,134 @@
 
   function cancel() {
     if (dirty && !confirm('Відкинути незбережені зміни?')) return
-    saved = content
+    saved = JSON.stringify(build())
     if (isNew) history.back()
     else navigate(pageHref(title))
   }
 
-  function onKeydown(e: KeyboardEvent) {
+  const hasYear = (v: string) => /\d/.test(v)
+</script>
+
+<svelte:window
+  onkeydown={(e) => {
     if ((e.ctrlKey || e.metaKey) && e.key === 's') {
       e.preventDefault()
       save()
     }
-  }
-
-  // Tab inserts spaces: YAML frontmatter is indentation-sensitive.
-  function onTextareaKeydown(e: KeyboardEvent) {
-    if (e.key !== 'Tab' || e.shiftKey) return
-    e.preventDefault()
-    const ta = e.currentTarget as HTMLTextAreaElement
-    ta.setRangeText('  ', ta.selectionStart, ta.selectionEnd, 'end')
-    content = ta.value
-  }
-</script>
-
-<svelte:window
-  onkeydown={onKeydown}
+  }}
   onbeforeunload={(e) => {
     if (dirty) e.preventDefault()
   }}
 />
 
-<div class="editor">
-  <header>
-    <h1 class="page-title">
-      <span class="muted">{isNew ? 'Створення:' : 'Редагування:'}</span>
-      {title}
-    </h1>
-    <div class="actions">
-      <button onclick={cancel}>Скасувати</button>
-      <button class="primary" onclick={save} disabled={saving || loading}>
-        {saving ? 'Збереження…' : 'Зберегти'}
-      </button>
-    </div>
-  </header>
+<header class="top">
+  <h1 class="page-title">
+    <span class="muted">{isNew ? 'Створення:' : 'Редагування:'}</span>
+    {title}
+  </h1>
+  <div class="actions">
+    <button onclick={cancel}>Скасувати</button>
+    <button class="primary" onclick={save} disabled={saving || loading}>
+      {saving ? 'Збереження…' : 'Зберегти'}
+    </button>
+  </div>
+</header>
 
-  {#if isNew && types.length}
-    <div class="types">
-      <span class="muted">Тип статті:</span>
-      <button onclick={() => (content = template(''))}>Без типу</button>
-      {#each types as [type, def] (type)}
-        <button onclick={() => (content = template(type))}>{def.label}</button>
-      {/each}
-      <a class="manage" href={worldHref(undefined, '/types')}>Керувати типами…</a>
-    </div>
-  {/if}
+{#if error}<p class="error">Не вдалося зберегти: {error}</p>{/if}
 
-  {#if error}<pre class="error">{error}</pre>{/if}
+{#if !loading}
+  <div class="editor">
+    <section class="text">
+      <label for="body" class="label">Текст статті</label>
+      <!-- svelte-ignore a11y_autofocus -->
+      <textarea id="body" bind:value={body} spellcheck="true" autofocus={!isNew}></textarea>
+      <p class="help muted">
+        <code>[[Стаття]]</code> — посилання, <code>[[Стаття|текст]]</code> — посилання з іншим текстом,
+        <code>## Розділ</code> — заголовок розділу, <code>**жирний**</code>, <code>*курсив*</code>. Ctrl+S — зберегти.
+      </p>
+    </section>
 
-  {#if !loading}
-    <!-- svelte-ignore a11y_autofocus -->
-    <textarea bind:value={content} onkeydown={onTextareaKeydown} spellcheck="true" autofocus></textarea>
-  {/if}
+    <aside class="props">
+      <div class="group">
+        <div class="row-head">
+          <label for="type" class="label">Тип статті</label>
+          <a class="manage" href={worldHref(undefined, '/types')}>Керувати типами</a>
+        </div>
+        <select id="type" bind:value={type}>
+          <option value="">Без типу</option>
+          {#each types as [key, def] (key)}<option value={key}>{def.label}</option>{/each}
+        </select>
+        {#if dropped.length}
+          <p class="warn">
+            Після збереження зникнуть поля попереднього типу: {dropped.map((f) => f.label).join(', ')}.
+          </p>
+        {/if}
+      </div>
 
-  <p class="help muted">
-    <code>[[Стаття]]</code> або <code>[[Стаття|текст]]</code> — посилання,
-    <code>[[Стаття#Розділ]]</code> — на розділ, <code>![[файл.png]]</code> — зображення.
-    Ctrl+S — зберегти.
-  </p>
-</div>
+      {#if schema.length || extras.length}
+        <div class="group">
+          <span class="label">Інфобокс</span>
+          {#each schema as f (f.key)}
+            <label class="field">
+              <span>{f.label}</span>
+              <input
+                id="field-{f.key}"
+                bind:value={values[f.key]}
+                placeholder={f.type === 'date' ? `Рік, напр. 343${era} або 340–347` : ''}
+              />
+              {#if f.type === 'date' && values[f.key]?.trim() && !hasYear(values[f.key])}
+                <small class="warn">Без числа року стаття не з'явиться на таймлайні.</small>
+              {/if}
+            </label>
+          {/each}
+          {#each extras as key, i (key)}
+            <div class="field">
+              <label for="field-{key}">{key === 'image' ? 'Зображення' : key}</label>
+              <div class="with-remove">
+                <input id="field-{key}" bind:value={values[key]} />
+                <button class="icon" onclick={() => extras.splice(i, 1)} aria-label="Прибрати поле «{key}»">
+                  <Icon name="trash" size={15} />
+                </button>
+              </div>
+            </div>
+          {/each}
+        </div>
+      {/if}
+
+      <div class="group">
+        {#if addingField}
+          <form class="add-field" onsubmit={addField}>
+            <input bind:this={newFieldInput} bind:value={newField} placeholder="Назва поля" aria-label="Назва нового поля" />
+            <button class="primary" disabled={!newField.trim()}>Додати</button>
+            <button type="button" onclick={() => (addingField = false)}>Скасувати</button>
+          </form>
+        {:else}
+          <button class="link" onclick={startAddingField}>+ Своє поле для цієї статті</button>
+        {/if}
+      </div>
+
+      <div class="group">
+        <label for="aliases" class="label">Інші назви</label>
+        <ChipsInput id="aliases" bind:values={aliases} placeholder="Напр. прізвисько" />
+        <small class="muted">Посилання на ці назви відкриватимуть цю статтю.</small>
+      </div>
+
+      <div class="group">
+        <label for="categories" class="label">Категорії</label>
+        <ChipsInput id="categories" bind:values={categories} suggestions={allCategories} placeholder="Напр. Персонажі" />
+      </div>
+    </aside>
+  </div>
+{/if}
 
 <style>
-  .editor {
-    display: flex;
-    flex-direction: column;
-    gap: 0.8rem;
-    max-width: 60rem;
-    height: calc(100vh - 6rem);
-  }
-  header {
+  .top {
     display: flex;
     justify-content: space-between;
     align-items: baseline;
     gap: 1rem;
     flex-wrap: wrap;
+    max-width: 76rem;
   }
   .page-title {
     font-size: 1.5rem;
@@ -151,39 +240,135 @@
     display: flex;
     gap: 0.5rem;
   }
-  .types {
+  .error {
+    color: var(--danger);
+    white-space: pre-wrap;
+  }
+
+  .editor {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 20rem;
+    gap: 1.5rem;
+    max-width: 76rem;
+    margin-top: 1rem;
+  }
+  .text {
     display: flex;
-    flex-wrap: wrap;
+    flex-direction: column;
     gap: 0.4rem;
-    align-items: center;
-    font-size: 0.9rem;
-  }
-  .types button {
-    padding: 0.15rem 0.65rem;
-  }
-  .manage {
-    font-size: 0.85rem;
-    margin-left: 0.3rem;
+    min-height: calc(100vh - 9rem);
   }
   textarea {
     flex: 1;
     min-height: 20rem;
-    padding: 1rem;
-    font: 0.92rem/1.6 var(--mono);
+    padding: 1rem 1.1rem;
+    font: 1rem/1.7 var(--sans);
     resize: none;
-    tab-size: 2;
-  }
-  .error {
-    color: var(--danger);
-    white-space: pre-wrap;
-    margin: 0;
-    font-size: 0.85rem;
   }
   .help {
-    font-size: 0.82rem;
+    font-size: 0.8rem;
     margin: 0;
   }
   .help code {
     font-family: var(--mono);
+  }
+
+  .props {
+    display: flex;
+    flex-direction: column;
+    gap: 1.1rem;
+    align-self: start;
+    padding: 1rem 1.1rem 1.2rem;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    background: var(--bg-raised);
+  }
+  .group {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+  }
+  .label {
+    font-size: 0.78rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--text-muted);
+  }
+  .row-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+  }
+  .manage {
+    font-size: 0.8rem;
+  }
+  select,
+  .field input,
+  .add-field input {
+    width: 100%;
+    padding: 0.35rem 0.55rem;
+  }
+  .field {
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+    font-size: 0.9rem;
+  }
+  .field > span,
+  .field > label {
+    font-weight: 600;
+  }
+  .with-remove {
+    display: flex;
+    gap: 0.25rem;
+  }
+  .icon {
+    display: grid;
+    place-items: center;
+    padding: 0.3rem;
+    border-color: transparent;
+    background: none;
+    color: var(--text-muted);
+  }
+  .add-field {
+    display: flex;
+    gap: 0.3rem;
+  }
+  .add-field button {
+    padding: 0.3rem 0.6rem;
+    font-size: 0.85rem;
+  }
+  .link {
+    align-self: flex-start;
+    border: none;
+    background: none;
+    padding: 0;
+    color: var(--accent);
+    font-size: 0.9rem;
+  }
+  .link:hover {
+    background: none;
+    text-decoration: underline;
+  }
+  .warn {
+    color: var(--danger);
+    font-size: 0.8rem;
+    margin: 0;
+  }
+  small {
+    font-size: 0.8rem;
+  }
+
+  @media (max-width: 900px) {
+    .editor {
+      grid-template-columns: minmax(0, 1fr);
+    }
+    .props {
+      order: -1;
+    }
+    .text {
+      min-height: 60vh;
+    }
   }
 </style>

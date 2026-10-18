@@ -30,7 +30,8 @@ func New(lib *library.Library, ui fs.FS) http.Handler {
 	mux.HandleFunc("GET "+w, s.inWorld(s.world))
 	mux.HandleFunc("GET "+w+"/pages", s.inWorld(s.list))
 	mux.HandleFunc("GET "+w+"/pages/{title...}", s.inWorld(s.get))
-	mux.HandleFunc("PUT "+w+"/pages/{title...}", s.inWorld(s.save))
+	mux.HandleFunc("GET "+w+"/source/{title...}", s.inWorld(s.source))
+	mux.HandleFunc("PUT "+w+"/source/{title...}", s.inWorld(s.saveSource))
 	mux.HandleFunc("GET "+w+"/search", s.inWorld(s.search))
 	mux.HandleFunc("GET "+w+"/categories", s.inWorld(s.categories))
 	mux.HandleFunc("GET "+w+"/categories/{name...}", s.inWorld(s.category))
@@ -103,15 +104,17 @@ func (s *server) get(w http.ResponseWriter, r *http.Request, v *vault.Vault) {
 	writeJSON(w, view)
 }
 
-func (s *server) save(w http.ResponseWriter, r *http.Request, v *vault.Vault) {
-	var req struct {
-		Content string `json:"content"`
-	}
-	if err := json.NewDecoder(io.LimitReader(r.Body, 10<<20)).Decode(&req); err != nil {
+func (s *server) source(w http.ResponseWriter, r *http.Request, v *vault.Vault) {
+	writeJSON(w, v.Source(titleParam(r)))
+}
+
+func (s *server) saveSource(w http.ResponseWriter, r *http.Request, v *vault.Vault) {
+	var src vault.Source
+	if err := json.NewDecoder(io.LimitReader(r.Body, 10<<20)).Decode(&src); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	title, err := v.Save(titleParam(r), []byte(req.Content))
+	title, err := v.SaveSource(titleParam(r), src)
 	if err != nil {
 		writeError(w, err)
 		return
