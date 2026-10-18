@@ -35,6 +35,17 @@
     | { name: 'article' | 'edit' | 'category'; arg: string }
     | { name: 'pages' | 'categories' | 'wanted' | 'search' | 'new' | 'timeline' | 'types' | 'calendar' | 'versions' | 'unknown' }
 
+  // Pages of forms and short lists keep a comfortable width and sit in the
+  // middle of a wide window; articles and the timeline set their own.
+  const pageWidths: Partial<Record<Route['name'], string>> = {
+    edit: '76rem',
+    new: '76rem',
+    types: '60rem',
+    calendar: '56rem',
+    versions: '52rem',
+    search: '48rem',
+  }
+
   const route: Route = $derived.by(() => {
     const [first = '', ...more] = rest
     const arg = titleFrom(more.join('/'))
@@ -84,37 +95,39 @@
     <Ribbon />
     <Sidebar />
     <main class:full={route.name === 'timeline'}>
-      {#if loadError}
-        <p class="error">Не вдалося з'єднатися з сервером: {loadError}</p>
-      {:else if !store.world}
-        <p class="muted">Завантаження…</p>
-      {:else if route.name === 'article'}
-        {#key route.arg}<Article title={route.arg} />{/key}
-      {:else if route.name === 'edit'}
-        {#key route.arg}<Editor title={route.arg} />{/key}
-      {:else if route.name === 'category'}
-        {#key route.arg}<CategoryPage name={route.arg} />{/key}
-      {:else if route.name === 'pages'}
-        <AllPages />
-      {:else if route.name === 'categories'}
-        <Categories />
-      {:else if route.name === 'wanted'}
-        <WantedPages />
-      {:else if route.name === 'search'}
-        <SearchResults />
-      {:else if route.name === 'new'}
-        <Editor title="" />
-      {:else if route.name === 'timeline'}
-        <Timeline />
-      {:else if route.name === 'types'}
-        <Types />
-      {:else if route.name === 'calendar'}
-        <Calendar />
-      {:else if route.name === 'versions'}
-        <Versions />
-      {:else}
-        <h1 class="page-title">Сторінку не знайдено</h1>
-      {/if}
+      <div class="page" style:max-width={pageWidths[route.name]}>
+        {#if loadError}
+          <p class="error">Не вдалося з'єднатися з сервером: {loadError}</p>
+        {:else if !store.world}
+          <p class="muted">Завантаження…</p>
+        {:else if route.name === 'article'}
+          {#key route.arg}<Article title={route.arg} />{/key}
+        {:else if route.name === 'edit'}
+          {#key route.arg}<Editor title={route.arg} />{/key}
+        {:else if route.name === 'category'}
+          {#key route.arg}<CategoryPage name={route.arg} />{/key}
+        {:else if route.name === 'pages'}
+          <AllPages />
+        {:else if route.name === 'categories'}
+          <Categories />
+        {:else if route.name === 'wanted'}
+          <WantedPages />
+        {:else if route.name === 'search'}
+          <SearchResults />
+        {:else if route.name === 'new'}
+          <Editor title="" />
+        {:else if route.name === 'timeline'}
+          <Timeline />
+        {:else if route.name === 'types'}
+          <Types />
+        {:else if route.name === 'calendar'}
+          <Calendar />
+        {:else if route.name === 'versions'}
+          <Versions />
+        {:else}
+          <h1 class="page-title">Сторінку не знайдено</h1>
+        {/if}
+      </div>
     </main>
   </div>
 {/if}
@@ -146,6 +159,12 @@
   }
   main.full {
     padding: 0;
+  }
+  .page {
+    margin-inline: auto;
+  }
+  main.full .page {
+    height: 100%;
   }
   .error {
     color: var(--danger);
