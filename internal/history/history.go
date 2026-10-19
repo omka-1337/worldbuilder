@@ -70,7 +70,7 @@ func Open(root, message string) (*Repo, error) {
 
 // Change is a file that differs from the last saved version.
 type Change struct {
-	Path  string `json:"path"` // slash-separated, relative to the world
+	Path  string `json:"path"`  // slash-separated, relative to the world
 	State string `json:"state"` // "added", "modified" or "deleted"
 }
 

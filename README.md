@@ -91,6 +91,11 @@ says. The timeline counts in one unit (the step, usually the year); units
 above it lay out one shared axis when their lengths are known, and separate
 tabs otherwise. The latest date in the world counts as the present: open
 periods run up to it. A world without a calendar counts plain years.
+An article can mark its own moments in the text with date anchors,
+`{{145.126 III Епохи | Проголошення ТАТ}}` (in the editor: select the date,
+right-click, "Додати дату"). The article shows the date where it stands,
+with the description on hover; a "Хронологія" tab lists the anchors in
+time order and leads back to each.
 Type and field keys are generated once
 from their names and never change, so renaming keeps articles working.
 

@@ -95,6 +95,13 @@ export interface TreeNode {
   ghost?: boolean // deleted since the last saved version: shown, but gone
 }
 
+// A {{date | description}} anchor of an article's text.
+export interface ChronoEntry {
+  id: string // where it stands in the article's HTML
+  date: string // as written
+  note: string // the author's description
+}
+
 export interface Crumb {
   name: string
   title?: string
@@ -117,6 +124,8 @@ export interface PageView {
   caption?: string
   html: string
   headings: Heading[]
+  // The text's date anchors in time order; null when it has none.
+  chronology: ChronoEntry[] | null
   backlinks: string[]
   modified: string
 }

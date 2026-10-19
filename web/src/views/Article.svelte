@@ -52,6 +52,22 @@
     openLightbox(shots, index)
   }
 
+  // --- chronology: the text's {{date | description}} anchors --------------
+
+  let tab = $state<'article' | 'chronology'>('article')
+
+  // From an entry back to its place in the text, briefly lit up.
+  async function goTo(id: string) {
+    tab = 'article'
+    await tick()
+    const el = document.getElementById(id)
+    if (!el) return
+    el.scrollIntoView({ block: 'center', behavior: 'smooth' })
+    el.classList.remove('flash')
+    void el.offsetWidth // restart the animation
+    el.classList.add('flash')
+  }
+
   function scrollToHash() {
     if (!location.hash) return
     document.getElementById(decodeURIComponent(location.hash.slice(1)))?.scrollIntoView()
@@ -117,6 +133,16 @@
         {#if view.redirectedFrom}
           <p class="note">Перенаправлено з «{view.redirectedFrom}»</p>
         {/if}
+        {#if view.chronology}
+          <div class="tabs" role="tablist" aria-label="Подання статті">
+            <button role="tab" aria-selected={tab === 'article'} class:on={tab === 'article'} onclick={() => (tab = 'article')}>
+              Стаття
+            </button>
+            <button role="tab" aria-selected={tab === 'chronology'} class:on={tab === 'chronology'} onclick={() => (tab = 'chronology')}>
+              Хронологія <span class="count">{view.chronology.length}</span>
+            </button>
+          </div>
+        {/if}
       </header>
 
       {#if view.type === 'disambiguation'}
@@ -148,7 +174,22 @@
         </aside>
       {/if}
 
-      <div class="prose">{@html view.html}</div>
+      <div class="prose" hidden={tab !== 'article'}>{@html view.html}</div>
+
+      {#if tab === 'chronology' && view.chronology}
+        <section class="chronology" aria-label="Хронологія">
+            <ol>
+              {#each view.chronology as e (e.id)}
+                <li>
+                  <button class="entry" onclick={() => goTo(e.id)} title="Показати в тексті">
+                    <span class="when">{e.date}</span>
+                    {#if e.note}<span class="what">{e.note}</span>{/if}
+                  </button>
+                </li>
+              {/each}
+            </ol>
+        </section>
+      {/if}
 
       <footer>
         {#if view.categories.length}
@@ -186,7 +227,7 @@
       </footer>
     </article>
 
-    {#if toc.length > 1}
+    {#if toc.length > 1 && tab === 'article'}
       <nav class="toc" aria-label="Зміст">
         <div class="toc-title">Зміст</div>
         <ol>
@@ -339,6 +380,80 @@
   .ib-image :global(img),
   .prose :global(img) {
     cursor: zoom-in;
+  }
+  .tabs {
+    display: flex;
+    gap: 0.2rem;
+    margin: 0.6rem 0 -0.6rem;
+  }
+  .tabs button {
+    padding: 0.35rem 0.8rem;
+    border: none;
+    border-bottom: 2px solid transparent;
+    border-radius: 0;
+    background: none;
+    color: var(--text-muted);
+    font-size: 0.92rem;
+  }
+  .tabs button:hover {
+    color: var(--text);
+    background: none;
+  }
+  .tabs button.on {
+    color: var(--text);
+    border-bottom-color: var(--accent);
+    font-weight: 600;
+  }
+  .tabs .count {
+    font-weight: 400;
+    color: var(--text-muted);
+  }
+  .chronology {
+    overflow: hidden; /* sits beside the floated infobox, as one column */
+    padding-left: 6px; /* room for the dots on the line */
+  }
+  .chronology ol {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    border-left: 2px solid var(--border);
+  }
+  .chronology li {
+    position: relative;
+    padding-left: 1rem;
+  }
+  .chronology li::before {
+    content: '';
+    position: absolute;
+    left: -6px;
+    top: 0.95rem;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: var(--bg);
+    border: 2px solid var(--accent);
+  }
+  .entry {
+    width: 100%;
+    display: grid;
+    gap: 0.1rem;
+    padding: 0.45rem 0.6rem;
+    border: none;
+    border-radius: 6px;
+    background: none;
+    text-align: left;
+    font: inherit;
+    color: var(--text);
+  }
+  .entry:hover {
+    background: var(--bg-hover);
+  }
+  .when {
+    font-weight: 650;
+    color: var(--accent);
+  }
+  .what {
+    line-height: 1.5;
   }
   .banner {
     height: clamp(9rem, 22vh, 15rem);

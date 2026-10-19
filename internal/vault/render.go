@@ -32,11 +32,20 @@ func newMarkdown(v *Vault) goldmark.Markdown {
 		goldmark.WithExtensions(extension.GFM, extension.Footnote),
 		goldmark.WithParserOptions(
 			parser.WithAutoHeadingID(),
-			parser.WithInlineParsers(util.Prioritized(&wikilink.Parser{}, 199)),
-			parser.WithASTTransformers(util.Prioritized(calloutTransformer{}, 100)),
+			parser.WithInlineParsers(
+				util.Prioritized(&wikilink.Parser{}, 199),
+				util.Prioritized(anchorParser{}, 199),
+			),
+			parser.WithASTTransformers(
+				util.Prioritized(calloutTransformer{}, 100),
+				util.Prioritized(anchorTransformer{}, 110),
+			),
 		),
 		goldmark.WithRendererOptions(
-			renderer.WithNodeRenderers(util.Prioritized(&linkRenderer{v: v}, 199)),
+			renderer.WithNodeRenderers(
+				util.Prioritized(&linkRenderer{v: v}, 199),
+				util.Prioritized(anchorRenderer{}, 199),
+			),
 		),
 	)
 }
@@ -44,7 +53,16 @@ func newMarkdown(v *Vault) goldmark.Markdown {
 // render converts an article body and collects its headings. Callers hold
 // v.mu, since link resolution reads the index.
 func (v *Vault) render(src []byte) (string, []Heading, error) {
+	return v.renderWith(src, nil)
+}
+
+// renderWith renders like render; with a collector it also gathers the
+// date anchors of the text for the article's chronology.
+func (v *Vault) renderWith(src []byte, col *anchorCollector) (string, []Heading, error) {
 	ctx := parser.NewContext(parser.WithIDs(&headingIDs{seen: map[string]bool{}}))
+	if col != nil {
+		ctx.Set(anchorsKey, col)
+	}
 	doc := v.md.Parser().Parse(text.NewReader(src), parser.WithContext(ctx))
 
 	headings := []Heading{}
@@ -249,6 +267,8 @@ func writeText(w io.StringWriter, src []byte, n ast.Node) {
 			}
 		case *ast.String:
 			_, _ = w.WriteString(string(c.Value))
+		case *dateAnchor:
+			_, _ = w.WriteString(c.Date)
 		default:
 			writeText(w, src, c)
 		}

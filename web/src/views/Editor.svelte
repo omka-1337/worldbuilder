@@ -2,6 +2,8 @@
   import { onMount, tick } from 'svelte'
   import Icon from '../components/Icon.svelte'
   import ChipsInput from '../components/ChipsInput.svelte'
+  import ContextMenu, { type MenuItem } from '../components/ContextMenu.svelte'
+  import AnchorDialog from '../components/AnchorDialog.svelte'
   import ImagePicker from '../components/ImagePicker.svelte'
   import { api, key, pageHref, worldHref, HttpError, type FieldDef } from '../lib/api'
   import { navigate, router } from '../lib/router.svelte'
@@ -98,6 +100,71 @@
   const chars = $derived([...body.replaceAll('\n', '')].length)
   const words = $derived(body.match(/[\p{L}\p{N}][\p{L}\p{N}'’ʼ-]*/gu)?.length ?? 0)
   const count = (n: number) => n.toLocaleString('uk')
+
+  // --- date anchors: {{date | description}} --------------------------------
+
+  // The right button over the text offers adding a date (or changing the
+  // one under the cursor) besides cut, copy and paste; Shift with the right
+  // button gives the browser's own menu, with spelling suggestions.
+  let menu = $state<{ x: number; y: number; items: MenuItem[] } | null>(null)
+  let anchor = $state<{ from: number; to: number; date: string; note: string; editing: boolean } | null>(null)
+
+  function anchorAround(pos: number) {
+    for (const m of body.matchAll(/\{\{([^{}\n]*?)\}\}/g)) {
+      const from = m.index, to = m.index + m[0].length
+      if (from <= pos && pos <= to) {
+        const [date, ...note] = m[1].split('|')
+        return { from, to, date: date.trim(), note: note.join('|').trim(), editing: true }
+      }
+    }
+    return null
+  }
+
+  function onBodyMenu(e: MouseEvent) {
+    if (e.shiftKey || !bodyInput) return
+    e.preventDefault()
+    const { selectionStart: from, selectionEnd: to } = bodyInput
+    const selected = body.slice(from, to)
+    const existing = anchorAround(from)
+    const items: MenuItem[] = [
+      existing
+        ? { label: 'Змінити дату', icon: 'calendar', run: () => (anchor = existing) }
+        : {
+            label: 'Додати дату',
+            icon: 'calendar',
+            run: () => (anchor = { from, to, date: selected.trim(), note: '', editing: false }),
+          },
+      'separator',
+    ]
+    if (selected) {
+      items.push(
+        { label: 'Вирізати', run: () => navigator.clipboard.writeText(selected).then(() => replace(from, to, '')) },
+        { label: 'Копіювати', run: () => navigator.clipboard.writeText(selected) },
+      )
+    }
+    items.push({ label: 'Вставити', run: () => navigator.clipboard.readText().then((t) => replace(from, to, t)) })
+    menu = { x: e.clientX, y: e.clientY, items }
+  }
+
+  // Replaces a span of the text as typing would, so Ctrl+Z undoes it.
+  async function replace(from: number, to: number, text: string) {
+    if (!bodyInput) return
+    bodyInput.focus()
+    bodyInput.setSelectionRange(from, to)
+    if (!document.execCommand('insertText', false, text)) {
+      body = body.slice(0, from) + text + body.slice(to)
+      await tick()
+      bodyInput.setSelectionRange(from + text.length, from + text.length)
+    }
+  }
+
+  async function saveAnchor(date: string, note: string) {
+    if (!anchor) return
+    const { from, to } = anchor
+    anchor = null
+    await tick() // the dialog is gone: the text can take focus, and the edit joins its undo history
+    replace(from, to, note ? `{{${date} | ${note}}}` : `{{${date}}}`)
+  }
 
   function build() {
     const infobox = [
@@ -282,6 +349,7 @@
         bind:this={bodyInput}
         bind:value={body}
         use:linkComplete={pages}
+        oncontextmenu={onBodyMenu}
         spellcheck="true"
         placeholder="Почніть писати. Наберіть [[, щоб послатися на іншу статтю."
         aria-label="Текст статті"
@@ -397,7 +465,7 @@
 
     <p class="help muted">
       <code>[[</code> — посилання на статтю (з підказками), <code>[[Стаття|текст]]</code> — посилання з іншим текстом,
-      <code>## Розділ</code> — заголовок розділу, <code>**жирний**</code>, <code>*курсив*</code>. Ctrl+S — зберегти.
+      <code>## Розділ</code> — заголовок розділу, <code>{'{{'}дата | опис{'}}'}</code> — дата для хронології (права кнопка → «Додати дату»), <code>**жирний**</code>, <code>*курсив*</code>. Ctrl+S — зберегти.
     </p>
   </div>
 {/if}
@@ -422,6 +490,20 @@
     </div>
   {/each}
 {/snippet}
+
+{#if menu}<ContextMenu {...menu} onclose={() => (menu = null)} />{/if}
+{#if anchor}
+  <AnchorDialog
+    date={anchor.date}
+    note={anchor.note}
+    editing={anchor.editing}
+    onsave={saveAnchor}
+    oncancel={() => {
+      anchor = null
+      bodyInput?.focus()
+    }}
+  />
+{/if}
 
 <style>
   /* Name and actions on top; below, the text and the properties panel share

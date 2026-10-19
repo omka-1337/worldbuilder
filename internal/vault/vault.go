@@ -336,8 +336,11 @@ type View struct {
 	Caption        string    `json:"caption,omitempty"` // rendered HTML
 	HTML           string    `json:"html"`
 	Headings       []Heading `json:"headings"`
-	Backlinks      []string  `json:"backlinks"`
-	Modified       time.Time `json:"modified"`
+	// Chronology is the text's date anchors in time order; nil when the
+	// text has none.
+	Chronology []ChronoEntry `json:"chronology"`
+	Backlinks  []string      `json:"backlinks"`
+	Modified   time.Time     `json:"modified"`
 }
 
 // Row is one rendered infobox row.
@@ -356,7 +359,8 @@ func (v *Vault) Get(title string) (*View, error) {
 	if !ok {
 		return nil, ErrNotFound
 	}
-	html, headings, err := v.render(p.Body)
+	col := &anchorCollector{cal: v.cal}
+	html, headings, err := v.renderWith(p.Body, col)
 	if err != nil {
 		return nil, err
 	}
@@ -371,6 +375,9 @@ func (v *Vault) Get(title string) (*View, error) {
 		Headings:   headings,
 		Backlinks:  v.sortedTitles(v.idx.backlinks[p]),
 		Modified:   p.ModTime,
+	}
+	if len(col.entries) > 0 {
+		view.Chronology = col.sorted()
 	}
 	if Key(p.Title) != Key(title) {
 		view.RedirectedFrom = title

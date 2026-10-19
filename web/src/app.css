@@ -329,6 +329,28 @@ main.standalone {
   color: var(--link-new);
 }
 
+/* A {{date | description}} anchor (internal/vault/anchors.go): the date in
+   the text, its description on hover; lit up when the chronology points at it. */
+.prose time.date-anchor {
+  border-bottom: 1px dotted var(--accent);
+  cursor: help;
+}
+.prose time.date-anchor.flash {
+  animation: anchor-flash 2s ease-out;
+  border-radius: 3px;
+}
+@keyframes anchor-flash {
+  0%,
+  40% {
+    background: var(--mark);
+    box-shadow: 0 0 0 3px var(--mark);
+  }
+  100% {
+    background: transparent;
+    box-shadow: 0 0 0 3px transparent;
+  }
+}
+
 /* Obsidian callouts ([!note], [!warning] …), see internal/vault/callout.go. */
 .prose .callout {
   --c: #3b82c4;
