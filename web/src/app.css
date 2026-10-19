@@ -370,6 +370,14 @@ main.standalone {
   font-weight: 650;
   color: var(--c);
 }
+/* The author's aside in the text, [!author]: a note in the margin, like a
+   sticky note, hidden for a clean read (Article.svelte). */
+.prose .callout-author {
+  --c: var(--changed);
+  border-left-style: dashed;
+  background: color-mix(in srgb, var(--changed) 10%, var(--bg));
+  font-size: 0.93em;
+}
 .prose .callout-warning,
 .prose .callout-caution,
 .prose .callout-attention { --c: #e08a1e; }

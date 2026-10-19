@@ -33,6 +33,7 @@ var calloutTitles = map[string]string{
 	"faq":       "Питання",
 	"example":   "Приклад",
 	"quote":     "Цитата",
+	"author":    "Нотатка автора", // the author's aside in the text, hidden in reading mode
 	"abstract":  "Коротко",
 	"summary":   "Коротко",
 	"todo":      "Зробити",

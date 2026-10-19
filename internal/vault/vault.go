@@ -333,8 +333,9 @@ type View struct {
 	Infobox        []Row       `json:"infobox"`
 	Banner         string      `json:"banner,omitempty"` // URL of a wide picture across the top
 	BannerY        float64     `json:"bannerY,omitempty"`
-	Images         []ViewImage `json:"images"`  // the infobox pictures; tabs when several
-	Gallery        []ViewImage `json:"gallery"` // shown at the article's end when not empty
+	Images         []ViewImage `json:"images"`          // the infobox pictures; tabs when several
+	Gallery        []ViewImage `json:"gallery"`         // shown at the article's end when not empty
+	Notes          string      `json:"notes,omitempty"` // the author's notes, rendered; not the world's canon
 	HTML           string      `json:"html"`
 	Headings       []Heading   `json:"headings"`
 	// Chronology is the text's date anchors in time order; nil when the
@@ -426,6 +427,11 @@ func (v *Vault) GetCompared(title string, saved func(rel string) (raw []byte, fo
 	}
 	if len(col.entries) > 0 {
 		view.Chronology = col.sorted()
+	}
+	if len(bytes.TrimSpace(p.Notes)) > 0 {
+		if view.Notes, _, err = v.render(p.Notes); err != nil {
+			return nil, err
+		}
 	}
 	if changes != nil && marks != nil {
 		changes.Blocks = marks.blocks

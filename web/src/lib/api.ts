@@ -123,6 +123,7 @@ export interface PageView {
   bannerY?: number // 0..1, the part of it kept in view
   images: { html: string; label?: string; caption?: string }[] // infobox pictures; tabs when several
   gallery: { html: string; caption?: string }[] // shown at the article's end when not empty
+  notes?: string // the author's notes, rendered: references and plans, not canon
   html: string
   headings: Heading[]
   // The text's date anchors in time order; null when it has none.
@@ -146,6 +147,7 @@ export interface Source {
   body: string
   images: InfoImage[] // the infobox pictures
   gallery: InfoImage[] // the article's gallery
+  notes: string // the author's notes, kept apart from the text
 }
 
 // An infobox picture in the editor: ![[file]], its tab among several, the

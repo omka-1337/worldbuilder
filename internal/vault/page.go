@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"path"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -26,7 +27,8 @@ type Page struct {
 	Gallery    []InfoImage // the article's gallery, shown at its end when not empty
 	BannerY    float64     // 0..1, which part of the banner stays visible
 	Raw        []byte      // the whole file, frontmatter included
-	Body       []byte      // Markdown after the frontmatter
+	Body       []byte      // Markdown after the frontmatter, without the author's notes
+	Notes      []byte      // the author's notes: the %% notes block at the end
 	ModTime    time.Time
 
 	textLen    int      // characters in the body, how much has been written
@@ -102,7 +104,8 @@ func (e *ParseError) Error() string { return fmt.Sprintf("%s: %v", e.Path, e.Err
 func (e *ParseError) Unwrap() error { return e.Err }
 
 func parsePage(rel string, raw []byte) (*Page, error) {
-	fmRaw, body := splitFrontmatter(raw)
+	fmRaw, all := splitFrontmatter(raw)
+	body, notes := splitNotes(all)
 
 	var fm frontmatter
 	if len(fmRaw) > 0 {
@@ -120,6 +123,7 @@ func parsePage(rel string, raw []byte) (*Page, error) {
 		Categories: stringList(fm.Categories),
 		Raw:        raw,
 		Body:       body,
+		Notes:      notes,
 	}
 	if p.Title == "" {
 		p.Title = strings.TrimSuffix(path.Base(rel), path.Ext(rel))
@@ -173,6 +177,8 @@ func parsePage(rel string, raw []byte) (*Page, error) {
 	}
 	search.WriteString("\n")
 	search.Write(body)
+	search.WriteString("\n")
+	search.Write(notes)
 	p.searchRaw = search.String()
 	p.searchText = strings.ToLower(p.searchRaw)
 
@@ -213,6 +219,43 @@ func infoImages(v any) []InfoImage {
 		add(InfoImage{File: formatValue(v)})
 	}
 	return out
+}
+
+// The author's notes on an article (references, intentions, plans: not the
+// world's canon) live at the end of its file, in a block that Obsidian
+// keeps hidden as a comment:
+//
+//	%% notes
+//	Візуальна мова: пізній СРСР, 90-ті…
+//	%%
+var notesStart = regexp.MustCompile(`(?m)^%%[ \t]*notes[ \t]*\r?\n`)
+
+// splitNotes separates an article's text from its notes block.
+func splitNotes(body []byte) (text, notes []byte) {
+	locs := notesStart.FindAllIndex(body, -1)
+	if len(locs) == 0 {
+		return body, nil
+	}
+	start := locs[len(locs)-1]
+	notes = bytes.TrimRight(body[start[1]:], " \t\r\n")
+	// The closing %% line; without it the block simply runs to the end.
+	if i := bytes.LastIndexByte(notes, '\n'); strings.TrimSpace(string(notes[i+1:])) == "%%" {
+		notes = notes[:max(i, 0)]
+	}
+	return bytes.TrimRight(body[:start[0]], " \t\r\n"), bytes.Trim(notes, "\r\n")
+}
+
+// joinNotes writes notes back after the text, as splitNotes reads them.
+func joinNotes(text, notes string) string {
+	notes = strings.Trim(notes, "\n")
+	if strings.TrimSpace(notes) == "" {
+		return text
+	}
+	text = strings.TrimRight(text, "\n")
+	if text != "" {
+		text += "\n\n"
+	}
+	return text + "%% notes\n" + notes + "\n%%\n"
 }
 
 // splitFrontmatter separates a leading "---" YAML block from the body.

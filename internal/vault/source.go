@@ -25,6 +25,7 @@ type Source struct {
 	Images     []InfoImage `json:"images"`  // the infobox pictures, with preview URLs when loading
 	Gallery    []InfoImage `json:"gallery"` // the article's gallery, likewise
 	Body       string      `json:"body"`
+	Notes      string      `json:"notes"` // the author's notes, apart from the text
 }
 
 // Source returns the editable parts of a page; for a missing page it
@@ -47,6 +48,7 @@ func (v *Vault) Source(title string) Source {
 		Images:     []InfoImage{},
 		Gallery:    []InfoImage{},
 		Body:       string(p.Body),
+		Notes:      string(p.Notes),
 	}
 	for _, img := range p.Gallery {
 		img.URL = v.imageURL(img.File)
@@ -152,7 +154,7 @@ func (v *Vault) SaveSource(title string, src Source) (string, error) {
 		out.Write(fm)
 		out.WriteString("---\n")
 	}
-	out.WriteString(strings.TrimLeft(src.Body, "\n"))
+	out.WriteString(joinNotes(strings.TrimLeft(src.Body, "\n"), src.Notes))
 	// Both the old and the new name have a folder of children: they would
 	// collide. A folder only under the new name is simply adopted.
 	if old != "" {

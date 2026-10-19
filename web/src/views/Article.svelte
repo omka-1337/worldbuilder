@@ -2,6 +2,7 @@
   import { tick } from 'svelte'
   import { api, key, NotFoundError, pageHref, editHref, categoryHref, worldHref, type PageView, type Wanted } from '../lib/api'
   import { store } from '../lib/store.svelte'
+  import { prefs } from '../lib/prefs.svelte'
   import { openLightbox, type Shot } from '../lib/lightbox.svelte'
 
   let { title }: { title: string } = $props()
@@ -55,7 +56,9 @@
 
   // --- chronology: the text's {{date | description}} anchors --------------
 
-  let tab = $state<'article' | 'chronology'>('article')
+  let tab = $state<'article' | 'chronology' | 'notes'>('article')
+  // Asides of the author in the text, [!author] callouts.
+  const hasAsides = $derived(!!view?.html.includes('callout-author'))
 
   // What changed since the last saved version is marked; the author can
   // turn the marks off for a clean read.
@@ -128,7 +131,7 @@
   {#if view.banner}
     <div class="banner" style:background-image="url('{view.banner}')" style:background-position-y="{(view.bannerY ?? 0.5) * 100}%"></div>
   {/if}
-  <div class="article" class:has-toc={toc.length > 1} class:show-changes={showChanges}>
+  <div class="article" class:has-toc={toc.length > 1} class:show-changes={showChanges} class:hide-asides={prefs.hideAsides}>
     <article>
       <header>
         {#if view.location.length}
@@ -142,7 +145,14 @@
         {/if}
         <div class="title-row">
           <h1 class="page-title">{view.title}</h1>
-          <a href={editHref(view.title)} class="edit">Редагувати</a>
+          <div class="title-actions">
+            {#if hasAsides && tab === 'article'}
+              <button class="link" onclick={() => (prefs.hideAsides = !prefs.hideAsides)}>
+                {prefs.hideAsides ? 'Показати нотатки' : 'Сховати нотатки'}
+              </button>
+            {/if}
+            <a href={editHref(view.title)} class="edit">Редагувати</a>
+          </div>
         </div>
         {#if view.redirectedFrom}
           <p class="note">Перенаправлено з «{view.redirectedFrom}»</p>
@@ -161,14 +171,21 @@
             <a href={worldHref(undefined, '/versions')}>Версії</a>
           </p>
         {/if}
-        {#if view.chronology}
+        {#if view.chronology || view.notes}
           <div class="tabs" role="tablist" aria-label="Подання статті">
             <button role="tab" aria-selected={tab === 'article'} class:on={tab === 'article'} onclick={() => (tab = 'article')}>
               Стаття
             </button>
-            <button role="tab" aria-selected={tab === 'chronology'} class:on={tab === 'chronology'} onclick={() => (tab = 'chronology')}>
-              Хронологія <span class="count">{view.chronology.length}</span>
-            </button>
+            {#if view.chronology}
+              <button role="tab" aria-selected={tab === 'chronology'} class:on={tab === 'chronology'} onclick={() => (tab = 'chronology')}>
+                Хронологія <span class="count">{view.chronology.length}</span>
+              </button>
+            {/if}
+            {#if view.notes}
+              <button role="tab" aria-selected={tab === 'notes'} class:on={tab === 'notes'} onclick={() => (tab = 'notes')}>
+                Нотатки
+              </button>
+            {/if}
           </div>
         {/if}
       </header>
@@ -224,6 +241,13 @@
               </figure>
             {/each}
           </div>
+        </section>
+      {/if}
+
+      {#if tab === 'notes' && view.notes}
+        <section class="notes" aria-label="Нотатки автора">
+          <p class="notes-head muted">Нотатки автора: задуми, референси, плани. Це не частина канону світу.</p>
+          <div class="prose">{@html view.notes}</div>
         </section>
       {/if}
 
@@ -504,6 +528,36 @@
   .ib-image :global(img),
   .prose :global(img) {
     cursor: zoom-in;
+  }
+  .title-actions {
+    display: flex;
+    gap: 1rem;
+    align-items: baseline;
+  }
+  .title-actions button.link {
+    border: none;
+    background: none;
+    padding: 0;
+    color: var(--link);
+    font-size: 0.9rem;
+  }
+  .title-actions button.link:hover {
+    background: none;
+    text-decoration: underline;
+  }
+  .hide-asides :global(.prose .callout-author) {
+    display: none;
+  }
+  .notes {
+    overflow: hidden; /* beside the infobox, as one column */
+    padding: 0.2rem 1.2rem 1rem;
+    border-left: 3px solid var(--changed);
+    background: color-mix(in srgb, var(--changed) 6%, transparent);
+    border-radius: 0 8px 8px 0;
+  }
+  .notes-head {
+    font-size: 0.85rem;
+    margin: 0.6rem 0 0.4rem;
   }
   .changes-note {
     display: flex;

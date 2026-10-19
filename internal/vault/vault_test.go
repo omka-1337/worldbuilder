@@ -1325,3 +1325,70 @@ func TestGallery(t *testing.T) {
 		t.Errorf("empty gallery kept:\n%s", raw)
 	}
 }
+
+func TestAuthorNotes(t *testing.T) {
+	files := map[string]string{}
+	for k, v := range fixture {
+		files[k] = v
+	}
+	files["АСНС.md"] = "---\ntype: location\n---\nФедерація.\n\n> [!author]\n> Перевірити дати.\n\n%% notes\n# Візуальна мова\nЯк [[Нова стаття]], пізній СРСР.\n%%\n"
+	v, err := Open(writeWorld(t, files), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	view, err := v.Get("АСНС")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(view.HTML, "Візуальна мова") || !strings.Contains(view.Notes, "Візуальна мова") || !strings.Contains(view.Notes, "wikilink new") {
+		t.Errorf("text %q, notes %q", view.HTML, view.Notes)
+	}
+	if !strings.Contains(view.HTML, `<blockquote class="callout callout-author">`) || !strings.Contains(view.HTML, "Нотатка автора") {
+		t.Errorf("author callout:\n%s", view.HTML)
+	}
+	for _, w := range v.Wanted() {
+		if w.Title == "Нова стаття" {
+			t.Error("a link in the notes counts as a wanted article")
+		}
+	}
+	if hits := v.Search("пізній СРСР", 5); len(hits) == 0 {
+		t.Error("notes are not searched")
+	}
+
+	// The editor gets them apart and writes them back as they were.
+	src := v.Source("АСНС")
+	if src.Notes != "# Візуальна мова\nЯк [[Нова стаття]], пізній СРСР." || strings.Contains(src.Body, "notes") {
+		t.Fatalf("source body %q notes %q", src.Body, src.Notes)
+	}
+	src.Notes += "\nЩе думка."
+	if _, err := v.SaveSource("АСНС", src); err != nil {
+		t.Fatal(err)
+	}
+	raw, _ := os.ReadFile(filepath.Join(v.Root(), "АСНС.md"))
+	if !strings.HasSuffix(string(raw), "> Перевірити дати.\n\n%% notes\n# Візуальна мова\nЯк [[Нова стаття]], пізній СРСР.\nЩе думка.\n%%\n") {
+		t.Errorf("file:\n%s", raw)
+	}
+	// Emptied, the block goes away.
+	src = v.Source("АСНС")
+	src.Notes = "  "
+	v.SaveSource("АСНС", src)
+	raw, _ = os.ReadFile(filepath.Join(v.Root(), "АСНС.md"))
+	if strings.Contains(string(raw), "%%") {
+		t.Errorf("empty notes kept:\n%s", raw)
+	}
+}
+
+func TestSplitNotes(t *testing.T) {
+	for _, c := range []struct{ in, text, notes string }{
+		{"Текст.\n", "Текст.\n", ""},
+		{"Текст.\n\n%% notes\nОдне.\n%%\n", "Текст.", "Одне."},
+		{"%% notes\nБез закриття", "", "Без закриття"},
+		{"Текст %% notes не з початку рядка.\n", "Текст %% notes не з початку рядка.\n", ""},
+		{"А\n%% notes\nСтаре.\n%%\nБ\n%% notes\nНове.\n%%", "А\n%% notes\nСтаре.\n%%\nБ", "Нове."},
+	} {
+		text, notes := splitNotes([]byte(c.in))
+		if string(text) != c.text || string(notes) != c.notes {
+			t.Errorf("%q: text %q notes %q", c.in, text, notes)
+		}
+	}
+}

@@ -131,11 +131,12 @@ func (v *Vault) PathOf(title string) (string, bool) {
 	return "", false
 }
 
-// Body returns the part of an article file after its frontmatter, as the
-// editor shows it.
+// Body returns an article file's text: after the frontmatter, without the
+// author's notes, as the editor shows it.
 func Body(raw []byte) string {
-	_, body := splitFrontmatter(raw)
-	return strings.ReplaceAll(string(body), "\r\n", "\n")
+	_, all := splitFrontmatter(raw)
+	text, _ := splitNotes(all)
+	return strings.ReplaceAll(string(text), "\r\n", "\n")
 }
 
 // pageAt finds the article whose folder is dir, whatever its extension case.

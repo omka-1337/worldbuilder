@@ -96,6 +96,12 @@ An article can mark its own moments in the text with date anchors,
 right-click, "Додати дату"). The article shows the date where it stands,
 with the description on hover; a "Хронологія" tab lists the anchors in
 time order and leads back to each.
+The author's notes, which are not the world's canon (references,
+intentions, plans), have two forms. A notes block at the end of an article
+file, `%% notes` … `%%` (an Obsidian comment, so hidden there), is shown in
+the article's "Нотатки" tab and edited in the editor's tab of that name.
+Short asides go in the text as `> [!author]` callouts and can be hidden for
+a clean read. The assistant reads both as intentions, never as facts.
 Type and field keys are generated once
 from their names and never change, so renaming keeps articles working.
 

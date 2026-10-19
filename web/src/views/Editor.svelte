@@ -73,6 +73,7 @@
       aliases = src?.aliases ?? []
       categories = src?.categories ?? []
       body = src?.body ?? ''
+      notes = src?.notes ?? ''
       images = src?.images.length ? src.images.map(slot) : [slot()]
       gallery = (src?.gallery ?? []).map((g) => ({ file: g.file, caption: g.caption ?? '', url: g.url ?? '' }))
       const known = new Set((store.world?.types[type]?.fields ?? []).map((f) => f.key))
@@ -109,20 +110,33 @@
 
   // --- preview ---------------------------------------------------------------
 
-  let previewing = $state(false)
+  // The text, the author's notes (kept apart from it), or how the text will
+  // look.
+  let mode = $state<'text' | 'notes' | 'preview'>('text')
   let previewHTML = $state('')
-  async function showPreview(on: boolean) {
-    previewing = on
-    if (on) {
+  async function showMode(m: typeof mode) {
+    mode = m
+    if (m === 'preview') {
       try {
         previewHTML = await api.preview(body)
       } catch (e) {
         previewHTML = `<p class="warn">Не вдалося показати: ${String(e)}</p>`
       }
-    } else {
-      await tick()
-      bodyInput?.focus()
+      return
     }
+    await tick()
+    ;(m === 'notes' ? notesInput : bodyInput)?.focus()
+  }
+
+  let notes = $state('')
+  let notesInput = $state<HTMLTextAreaElement>()
+
+  // An aside of the author in the text, [!author], after the paragraph the
+  // cursor is in; the cursor goes inside it.
+  function addAside(pos: number) {
+    const blank = body.indexOf('\n\n', pos)
+    const at = blank === -1 ? body.length : blank
+    replace(at, at, '\n\n> [!author]\n> ')
   }
 
   // --- date anchors: {{date | description}} --------------------------------
@@ -191,6 +205,7 @@
             icon: 'calendar',
             run: () => (anchor = { from, to, date: selected.trim(), note: '', editing: false }),
           },
+      { label: 'Додати нотатку автора', icon: 'edit', run: () => addAside(to) },
       'separator',
     ]
     if (selected) {
@@ -250,6 +265,7 @@
       images: pictures,
       gallery: gallery.map((g) => ({ file: g.file, caption: g.caption.trim() })),
       body,
+      notes,
     }
   }
 
@@ -420,11 +436,14 @@
     </div>
 
     <div class="body-area">
-    <div class="modes" role="tablist" aria-label="Текст чи перегляд">
-      <button role="tab" aria-selected={!previewing} class:on={!previewing} onclick={() => showPreview(false)}>Текст</button>
-      <button role="tab" aria-selected={previewing} class:on={previewing} onclick={() => showPreview(true)}>Перегляд</button>
+    <div class="modes" role="tablist" aria-label="Текст, нотатки чи перегляд">
+      <button role="tab" aria-selected={mode === 'text'} class:on={mode === 'text'} onclick={() => showMode('text')}>Текст</button>
+      <button role="tab" aria-selected={mode === 'notes'} class:on={mode === 'notes'} onclick={() => showMode('notes')}>
+        Нотатки{#if notes.trim()}<span class="dot" aria-label="є нотатки"></span>{/if}
+      </button>
+      <button role="tab" aria-selected={mode === 'preview'} class:on={mode === 'preview'} onclick={() => showMode('preview')}>Перегляд</button>
     </div>
-    <div class="body-wrap" hidden={previewing}>
+    <div class="body-wrap" hidden={mode !== 'text'}>
       <HighlightLayer textarea={bodyInput} text={body} />
       <textarea
         id="body"
@@ -439,7 +458,19 @@
       ></textarea>
       <ChangeGutter textarea={bodyInput} text={body} {changes} />
     </div>
-    {#if previewing}
+    <div class="body-wrap notes-wrap" hidden={mode !== 'notes'}>
+      <HighlightLayer textarea={notesInput} text={notes} />
+      <textarea
+        class="body"
+        bind:this={notesInput}
+        bind:value={notes}
+        use:linkComplete={pages}
+        spellcheck="true"
+        placeholder="Нотатки для себе: референси, задуми, плани, відкриті питання. Читачі статті їх не бачать у тексті, агент читає їх як ваші задуми, а не факти світу."
+        aria-label="Нотатки автора"
+      ></textarea>
+    </div>
+    {#if mode === 'preview'}
       <div class="preview prose" aria-label="Перегляд статті">{@html previewHTML}</div>
     {/if}
     </div>
@@ -739,6 +770,18 @@
   .modes button:hover {
     color: var(--text);
     background: none;
+  }
+  .modes .dot {
+    display: inline-block;
+    width: 6px;
+    height: 6px;
+    margin-left: 0.35rem;
+    vertical-align: middle;
+    border-radius: 50%;
+    background: var(--changed);
+  }
+  .notes-wrap {
+    background: color-mix(in srgb, var(--changed) 5%, var(--bg-raised));
   }
   .modes button.on {
     color: var(--text);
