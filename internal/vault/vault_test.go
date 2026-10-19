@@ -718,29 +718,56 @@ func TestInfoboxImage(t *testing.T) {
 	}
 
 	src := v.Source("Аедрін Сірий")
-	src.Infobox = append(src.Infobox, Field{Key: ImageKey, Value: "![[" + name + "]]"}, Field{Key: CaptionKey, Value: "Портрет із [[Вальмор]]а"})
+	src.Images = []InfoImage{{File: "![[" + name + "]]", Caption: "Портрет із [[Вальмор]]а"}}
 	if _, err := v.SaveSource("Аедрін Сірий", src); err != nil {
 		t.Fatal(err)
 	}
+	// One picture is written plainly.
+	raw, _ := os.ReadFile(filepath.Join(v.Root(), "Аедрін Сірий.md"))
+	if !strings.Contains(string(raw), "infobox:\n  image: \"![[Аедрін Сірий.png]]\"\n  caption: Портрет із [[Вальмор]]а\n  born:") {
+		t.Errorf("file:\n%s", raw)
+	}
 	view, _ := v.Get("Аедрін Сірий")
-	if !strings.Contains(view.Image, "<img src=") || !strings.Contains(view.Caption, `class="wikilink"`) {
-		t.Errorf("image %q caption %q", view.Image, view.Caption)
+	if len(view.Images) != 1 || !strings.Contains(view.Images[0].HTML, "<img src=") || !strings.Contains(view.Images[0].Caption, `class="wikilink"`) {
+		t.Errorf("images %+v", view.Images)
 	}
 	for _, r := range view.Infobox {
 		if r.Label == ImageKey || r.Label == CaptionKey {
 			t.Errorf("%s shown as a plain row", r.Label)
 		}
 	}
-	if got := v.Source("Аедрін Сірий").ImageURL; got != url {
-		t.Errorf("source image url = %q", got)
+	if got := v.Source("Аедрін Сірий").Images; len(got) != 1 || got[0].URL != url {
+		t.Errorf("source images = %+v", got)
+	}
+
+	// Several, with tabs, are written as a list and read back in order.
+	src = v.Source("Аедрін Сірий")
+	src.Images = append(src.Images, InfoImage{File: "![[Аедрін Сірий-2.png]]", Label: "Пізніше"})
+	src.Images[0].Label = "Молодим"
+	if _, err := v.SaveSource("Аедрін Сірий", src); err != nil {
+		t.Fatal(err)
+	}
+	raw, _ = os.ReadFile(filepath.Join(v.Root(), "Аедрін Сірий.md"))
+	if !strings.Contains(string(raw), "  image:\n  - file: \"![[Аедрін Сірий.png]]\"\n    label: Молодим\n    caption: Портрет із [[Вальмор]]а\n  - file: \"![[Аедрін Сірий-2.png]]\"\n    label: Пізніше\n") || strings.Contains(string(raw), "\n  caption:") {
+		t.Errorf("file:\n%s", raw)
+	}
+	view, _ = v.Get("Аедрін Сірий")
+	if len(view.Images) != 2 || view.Images[0].Label != "Молодим" || view.Images[1].Label != "Пізніше" || view.Images[1].Caption != "" {
+		t.Errorf("images %+v", view.Images)
+	}
+	if a, _ := v.Get("Вальмор"); !slices.Contains(a.Backlinks, "Аедрін Сірий") {
+		t.Error("a link in a picture's caption is not indexed")
+	}
+	if imgs := v.Images(); len(imgs) < 2 || !slices.Contains(imgs[0].Pages, "Аедрін Сірий") {
+		t.Errorf("world images = %+v", imgs)
 	}
 
 	// The image moves along with its article.
 	if err := v.Move("Аедрін Сірий", "Головна"); err != nil {
 		t.Fatal(err)
 	}
-	if view, _ := v.Get("Аедрін Сірий"); !strings.Contains(view.Image, "/files/%D0%93%D0%BE%D0%BB%D0%BE%D0%B2%D0%BD%D0%B0/") {
-		t.Errorf("image not found after move: %s", view.Image)
+	if view, _ := v.Get("Аедрін Сірий"); len(view.Images) == 0 || !strings.Contains(view.Images[0].HTML, "/files/%D0%93%D0%BE%D0%BB%D0%BE%D0%B2%D0%BD%D0%B0/") {
+		t.Errorf("image not found after move: %+v", view.Images)
 	}
 }
 

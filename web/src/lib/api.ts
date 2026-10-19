@@ -121,8 +121,7 @@ export interface PageView {
   infobox: { label: string; html: string; section?: boolean; changed?: 'added' | 'modified' | 'removed' }[]
   banner?: string // URL of a wide picture across the top
   bannerY?: number // 0..1, the part of it kept in view
-  image?: string
-  caption?: string
+  images: { html: string; label?: string; caption?: string }[] // infobox pictures; tabs when several
   html: string
   headings: Heading[]
   // The text's date anchors in time order; null when it has none.
@@ -144,7 +143,16 @@ export interface Source {
   categories: string[]
   infobox: { key: string; value: string; section?: string }[] // section: the type's section an own field sits in
   body: string
-  imageUrl?: string // preview of the infobox image, when loading
+  images: InfoImage[] // the infobox pictures
+}
+
+// An infobox picture in the editor: ![[file]], its tab among several, the
+// line under it, and a preview URL when loaded.
+export interface InfoImage {
+  file: string
+  label?: string
+  caption?: string
+  url?: string
 }
 
 export interface Hit {

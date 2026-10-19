@@ -125,17 +125,14 @@ func (v *Vault) extractLinks(p *Page) (links, images []string) {
 			return ast.WalkContinue, nil
 		})
 	}
-	// The infobox picture comes first, as the article shows it.
-	for _, f := range p.Infobox {
-		if f.Key == ImageKey {
-			collect([]byte(f.Value))
-		}
+	// The infobox pictures come first, as the article shows them.
+	for _, img := range p.Images {
+		collect([]byte(img.File))
+		collect([]byte(img.Caption))
 	}
 	collect(p.Body)
 	for _, f := range p.Infobox {
-		if f.Key != ImageKey {
-			collect([]byte(f.Value))
-		}
+		collect([]byte(f.Value))
 	}
 	return links, images
 }

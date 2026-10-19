@@ -46,7 +46,9 @@
       const url = el instanceof HTMLImageElement ? el.getAttribute('src') : view?.banner
       if (!url) continue
       if (el === picture) index = shots.length
-      const caption = el.closest('.ib-image') ? root.querySelector('.ib-image figcaption')?.textContent?.trim() : el.getAttribute('alt')
+      const caption = el.closest('.ib-image')
+        ? el.closest('.ib-image')!.querySelector('figcaption')?.textContent?.trim()
+        : el.getAttribute('alt')
       shots.push({ url, caption: caption || undefined })
     }
     openLightbox(shots, index)
@@ -59,6 +61,13 @@
   // What changed since the last saved version is marked; the author can
   // turn the marks off for a clean read.
   let showChanges = $state(true)
+
+  // Several infobox pictures show one at a time, under tabs.
+  let picture = $state(0)
+  $effect(() => {
+    void view?.title
+    picture = 0
+  })
 
   // From an entry back to its place in the text, briefly lit up.
   async function goTo(id: string) {
@@ -169,15 +178,24 @@
         </p>
       {/if}
 
-      {#if view.infobox.length || view.image}
+      {#if view.infobox.length || view.images.length}
         <aside class="infobox">
           <div class="ib-title">{view.title}</div>
-          {#if view.image}
-            <figure class="ib-image">
-              {@html view.image}
-              {#if view.caption}<figcaption>{@html view.caption}</figcaption>{/if}
-            </figure>
+          {#if view.images.length > 1}
+            <div class="ib-tabs" role="tablist" aria-label="Зображення">
+              {#each view.images as img, i (i)}
+                <button role="tab" aria-selected={picture === i} class:on={picture === i} onclick={() => (picture = i)}>
+                  {img.label || i + 1}
+                </button>
+              {/each}
+            </div>
           {/if}
+          {#each view.images as img, i (i)}
+            <figure class="ib-image" hidden={picture !== i}>
+              {@html img.html}
+              {#if img.caption}<figcaption>{@html img.caption}</figcaption>{/if}
+            </figure>
+          {/each}
           {#if view.typeLabel}<div class="ib-type">{view.typeLabel}</div>{/if}
           {#if view.infobox.length}<dl>
             {#each view.infobox as row, i (i)}
@@ -349,6 +367,34 @@
   }
   .ib-image {
     margin: 0;
+  }
+  .ib-image[hidden] {
+    display: none;
+  }
+  /* Tabs over several pictures, as on wiki portable infoboxes. */
+  .ib-tabs {
+    display: flex;
+    flex-wrap: wrap;
+    border-bottom: 1px solid var(--border);
+  }
+  .ib-tabs button {
+    flex: 1 1 auto;
+    padding: 0.35rem 0.6rem;
+    border: none;
+    border-bottom: 2px solid transparent;
+    border-radius: 0;
+    background: none;
+    color: var(--text-muted);
+    font-size: 0.85rem;
+  }
+  .ib-tabs button:hover {
+    color: var(--text);
+    background: var(--bg-hover);
+  }
+  .ib-tabs button.on {
+    color: var(--text);
+    font-weight: 600;
+    border-bottom-color: var(--accent);
   }
   .ib-image :global(img) {
     display: block;

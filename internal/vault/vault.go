@@ -321,22 +321,21 @@ func (v *Vault) summaries(keep func(*Page) bool) []Summary {
 
 // View is everything needed to display an article.
 type View struct {
-	Title          string    `json:"title"`
-	Path           string    `json:"path"`
-	Type           string    `json:"type,omitempty"`
-	TypeLabel      string    `json:"typeLabel,omitempty"`
-	RedirectedFrom string    `json:"redirectedFrom,omitempty"`
-	Location       []Crumb   `json:"location"` // the articles it is nested in, outermost first
-	Children       []string  `json:"children"` // articles nested directly inside it
-	Aliases        []string  `json:"aliases"`
-	Categories     []string  `json:"categories"`
-	Infobox        []Row     `json:"infobox"`
-	Banner         string    `json:"banner,omitempty"` // URL of a wide picture across the top
-	BannerY        float64   `json:"bannerY,omitempty"`
-	Image          string    `json:"image,omitempty"`   // rendered HTML
-	Caption        string    `json:"caption,omitempty"` // rendered HTML
-	HTML           string    `json:"html"`
-	Headings       []Heading `json:"headings"`
+	Title          string      `json:"title"`
+	Path           string      `json:"path"`
+	Type           string      `json:"type,omitempty"`
+	TypeLabel      string      `json:"typeLabel,omitempty"`
+	RedirectedFrom string      `json:"redirectedFrom,omitempty"`
+	Location       []Crumb     `json:"location"` // the articles it is nested in, outermost first
+	Children       []string    `json:"children"` // articles nested directly inside it
+	Aliases        []string    `json:"aliases"`
+	Categories     []string    `json:"categories"`
+	Infobox        []Row       `json:"infobox"`
+	Banner         string      `json:"banner,omitempty"` // URL of a wide picture across the top
+	BannerY        float64     `json:"bannerY,omitempty"`
+	Images         []ViewImage `json:"images"` // the infobox pictures; tabs when several
+	HTML           string      `json:"html"`
+	Headings       []Heading   `json:"headings"`
 	// Chronology is the text's date anchors in time order; nil when the
 	// text has none.
 	Chronology []ChronoEntry `json:"chronology"`
@@ -344,6 +343,13 @@ type View struct {
 	Changes   *ViewChanges `json:"changes,omitempty"`
 	Backlinks []string     `json:"backlinks"`
 	Modified  time.Time    `json:"modified"`
+}
+
+// ViewImage is one infobox picture, rendered.
+type ViewImage struct {
+	HTML    string `json:"html"`
+	Label   string `json:"label,omitempty"` // its tab
+	Caption string `json:"caption,omitempty"`
 }
 
 // Row is one rendered infobox row.
@@ -435,9 +441,9 @@ func (v *Vault) GetCompared(title string, saved func(rel string) (raw []byte, fo
 	def := v.world.Types[p.Type]
 	view.TypeLabel = def.Label
 	values := p.typeValues()
-	if img := values[ImageKey]; img != "" {
-		view.Image = v.renderInline(img)
-		view.Caption = v.renderInline(values[CaptionKey])
+	view.Images = []ViewImage{}
+	for _, img := range p.Images {
+		view.Images = append(view.Images, ViewImage{HTML: v.renderInline(img.File), Label: img.Label, Caption: v.renderInline(img.Caption)})
 	}
 	if p.Banner != "" {
 		view.Banner, view.BannerY = v.imageURL(p.Banner), p.BannerY

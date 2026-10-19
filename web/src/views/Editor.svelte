@@ -6,7 +6,7 @@
   import AnchorDialog from '../components/AnchorDialog.svelte'
   import LinkDialog from '../components/LinkDialog.svelte'
   import ImagePicker from '../components/ImagePicker.svelte'
-  import { api, key, pageHref, worldHref, HttpError, type FieldDef } from '../lib/api'
+  import { api, key, pageHref, worldHref, HttpError, type FieldDef, type InfoImage } from '../lib/api'
   import { navigate, router } from '../lib/router.svelte'
   import { store, refresh } from '../lib/store.svelte'
   import { linkComplete } from '../lib/linkComplete'
@@ -40,9 +40,11 @@
   let aliases = $state<string[]>([])
   let categories = $state<string[]>([])
   let body = $state('')
-  let image = $state('') // ![[file.png]]; every type has it
-  let imageUrl = $state('')
-  let caption = $state('')
+  // The infobox pictures, every type has them: one, or several shown under
+  // tabs. An empty last slot is where the next one is added.
+  // Every field set, for the picker and inputs to bind to.
+  const slot = (i: InfoImage = { file: '' }) => ({ file: i.file, label: i.label ?? '', caption: i.caption ?? '', url: i.url ?? '' })
+  let images = $state([slot()])
 
   let loadedType = ''
   let originalName = $state('')
@@ -68,12 +70,10 @@
       aliases = src?.aliases ?? []
       categories = src?.categories ?? []
       body = src?.body ?? ''
-      imageUrl = src?.imageUrl ?? ''
+      images = src?.images.length ? src.images.map(slot) : [slot()]
       const known = new Set((store.world?.types[type]?.fields ?? []).map((f) => f.key))
       for (const f of src?.infobox ?? []) {
-        if (f.key === 'image') image = f.value
-        else if (f.key === 'caption') caption = f.value
-        else if (f.section || !known.has(f.key)) extras.push({ key: f.key, section: f.section ?? '', value: f.value })
+        if (f.section || !known.has(f.key)) extras.push({ key: f.key, section: f.section ?? '', value: f.value })
         else values[f.key] = f.value
       }
       saved = JSON.stringify(build())
@@ -219,14 +219,25 @@
     replace(from, to, note ? `{{${date} | ${note}}}` : `{{${date}}}`)
   }
 
+  function moveImage(i: number, dir: -1 | 1) {
+    const j = i + dir
+    if (j < 0 || j >= images.length) return
+    ;[images[i], images[j]] = [images[j], images[i]]
+  }
+
   function build() {
+    // A lone picture needs no tab name.
+    const chosen = images.filter((i) => i.file.trim())
+    const pictures = chosen.map((i) => ({
+      file: i.file,
+      label: chosen.length > 1 ? i.label.trim() : '',
+      caption: i.caption.trim(),
+    }))
     const infobox = [
-      { key: 'image', value: image },
-      { key: 'caption', value: image ? caption : '' },
       ...schema.map((f) => ({ key: f.key, value: values[f.key] ?? '' })),
       ...extras.map((e) => ({ key: e.key, value: e.value, section: e.section || undefined })),
     ]
-    return { title: name.trim(), type, aliases, categories, infobox, body }
+    return { title: name.trim(), type, aliases, categories, infobox, images: pictures, body }
   }
 
   const dirty = $derived(!loading && JSON.stringify(build()) !== saved)
@@ -455,17 +466,43 @@
       </div>
 
       <div class="group">
-        <span class="label">Зображення</span>
-        <ImagePicker bind:value={image} bind:url={imageUrl} title={name || title} />
-        {#if image}
-          <input
-            class="caption"
-            bind:value={caption}
-            use:linkComplete={pages}
-            autocomplete="off"
-            placeholder="Підпис під зображенням"
-            aria-label="Підпис під зображенням"
-          />
+        <span class="label">{images.length > 1 ? 'Зображення · вкладки в інфобоксі' : 'Зображення'}</span>
+        {#each images as img, i (i)}
+          <div class="picture">
+            {#if images.length > 1}
+              <div class="picture-head">
+                <input
+                  bind:value={img.label}
+                  placeholder={`Назва вкладки ${i + 1}`}
+                  aria-label="Назва вкладки"
+                  autocomplete="off"
+                />
+                <button class="icon" onclick={() => moveImage(i, -1)} disabled={i === 0} title="Раніше" aria-label="Перемістити зображення раніше">
+                  <Icon name="up" size={15} />
+                </button>
+                <button class="icon" onclick={() => moveImage(i, 1)} disabled={i === images.length - 1} title="Пізніше" aria-label="Перемістити зображення пізніше">
+                  <Icon name="down" size={15} />
+                </button>
+                <button class="icon" onclick={() => images.splice(i, 1)} title="Прибрати" aria-label="Прибрати зображення">
+                  <Icon name="trash" size={15} />
+                </button>
+              </div>
+            {/if}
+            <ImagePicker bind:value={img.file} bind:url={img.url} title={name || title} />
+            {#if img.file}
+              <input
+                class="caption"
+                bind:value={img.caption}
+                use:linkComplete={pages}
+                autocomplete="off"
+                placeholder="Підпис під зображенням"
+                aria-label="Підпис під зображенням"
+              />
+            {/if}
+          </div>
+        {/each}
+        {#if images.every((i) => i.file)}
+          <button class="link" onclick={() => images.push(slot())}>+ Ще одне зображення</button>
         {/if}
       </div>
 
@@ -749,6 +786,26 @@
     font-size: 0.8rem;
   }
   select,
+  .picture {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr); /* a wide picture must not widen the panel */
+    gap: 0.35rem;
+  }
+  .picture + .picture {
+    margin-top: 0.5rem;
+    padding-top: 0.6rem;
+    border-top: 1px dashed var(--border);
+  }
+  .picture-head {
+    display: flex;
+    gap: 0.1rem;
+  }
+  .picture-head input {
+    flex: 1;
+    min-width: 0;
+    padding: 0.3rem 0.5rem;
+    font-weight: 600;
+  }
   .caption,
   .field input,
   .add-field input {

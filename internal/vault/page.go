@@ -20,11 +20,12 @@ type Page struct {
 	Type       string
 	Aliases    []string
 	Categories []string
-	Infobox    []Field // in file order
-	Banner     string  // image embed shown across the top of the article
-	BannerY    float64 // 0..1, which part of the banner stays visible
-	Raw        []byte  // the whole file, frontmatter included
-	Body       []byte  // Markdown after the frontmatter
+	Infobox    []Field     // in file order, without the pictures
+	Images     []InfoImage // the infobox pictures, first shown first
+	Banner     string      // image embed shown across the top of the article
+	BannerY    float64     // 0..1, which part of the banner stays visible
+	Raw        []byte      // the whole file, frontmatter included
+	Body       []byte      // Markdown after the frontmatter
 	ModTime    time.Time
 
 	textLen    int      // characters in the body, how much has been written
@@ -58,6 +59,25 @@ func (p *Page) typeValues() map[string]string {
 		}
 	}
 	return values
+}
+
+// InfoImage is one picture at the top of the infobox. With several, the
+// infobox shows them one at a time under tabs named by their labels:
+//
+//	infobox:
+//	  image:
+//	    - file: "![[young.png]]"
+//	      label: 211 р.
+//	      caption: Койл у молодості
+//	    - file: "![[old.png]]"
+//	      label: 224 р.
+//
+// One picture is written plainly, `image: "![[x.png]]"` with `caption`.
+type InfoImage struct {
+	File    string `json:"file"`              // ![[name.png]]
+	Label   string `json:"label,omitempty"`   // its tab, among several
+	Caption string `json:"caption,omitempty"` // the line under it
+	URL     string `json:"url,omitempty"`     // where the editor previews it
 }
 
 type frontmatter struct {
@@ -108,8 +128,17 @@ func parsePage(rel string, raw []byte) (*Page, error) {
 	if y, err := strconv.ParseFloat(strings.TrimSpace(fmt.Sprint(fm.BannerY)), 64); err == nil && y >= 0 && y <= 1 {
 		p.BannerY = y
 	}
+	caption := ""
 	for _, item := range fm.Infobox {
 		key := fmt.Sprint(item.Key)
+		switch key {
+		case ImageKey:
+			p.Images = infoImages(item.Value)
+			continue
+		case CaptionKey:
+			caption = formatValue(item.Value)
+			continue
+		}
 		if nested, ok := item.Value.(yaml.MapSlice); ok {
 			for _, sub := range nested {
 				p.Infobox = append(p.Infobox, Field{Key: fmt.Sprint(sub.Key), Value: formatValue(sub.Value), Section: key})
@@ -117,6 +146,10 @@ func parsePage(rel string, raw []byte) (*Page, error) {
 			continue
 		}
 		p.Infobox = append(p.Infobox, Field{Key: key, Value: formatValue(item.Value)})
+	}
+	// The plain form's caption belongs to its one picture.
+	if len(p.Images) == 1 && p.Images[0].Caption == "" {
+		p.Images[0].Caption = caption
 	}
 
 	var search strings.Builder
@@ -127,12 +160,51 @@ func parsePage(rel string, raw []byte) (*Page, error) {
 	for _, f := range p.Infobox {
 		search.WriteString("\n" + f.Value)
 	}
+	for _, img := range p.Images {
+		search.WriteString("\n" + img.Caption)
+	}
 	search.WriteString("\n")
 	search.Write(body)
 	p.searchRaw = search.String()
 	p.searchText = strings.ToLower(p.searchRaw)
 
 	return p, nil
+}
+
+// infoImages reads the infobox's `image`: one embed, or a list of embeds or
+// of {file, label, caption}.
+func infoImages(v any) []InfoImage {
+	var out []InfoImage
+	add := func(img InfoImage) {
+		if img.File = strings.TrimSpace(img.File); img.File != "" {
+			out = append(out, img)
+		}
+	}
+	switch v := v.(type) {
+	case []any:
+		for _, e := range v {
+			switch e := e.(type) {
+			case yaml.MapSlice:
+				var img InfoImage
+				for _, kv := range e {
+					switch fmt.Sprint(kv.Key) {
+					case "file", "image":
+						img.File = formatValue(kv.Value)
+					case "label":
+						img.Label = formatValue(kv.Value)
+					case "caption":
+						img.Caption = formatValue(kv.Value)
+					}
+				}
+				add(img)
+			default:
+				add(InfoImage{File: formatValue(e)})
+			}
+		}
+	default:
+		add(InfoImage{File: formatValue(v)})
+	}
+	return out
 }
 
 // splitFrontmatter separates a leading "---" YAML block from the body.

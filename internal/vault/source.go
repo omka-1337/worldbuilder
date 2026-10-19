@@ -14,16 +14,16 @@ import (
 // Source is an article split into the parts the editor form shows. The
 // file's frontmatter is an implementation detail the user never sees.
 type Source struct {
-	Exists     bool     `json:"exists"`
-	Create     bool     `json:"create"`           // on save: fail if the title is taken
-	Title      string   `json:"title"`            // on save: a different title renames the page
-	Folder     string   `json:"folder,omitempty"` // on creating: the folder to put it in
-	Type       string   `json:"type"`
-	Aliases    []string `json:"aliases"`
-	Categories []string `json:"categories"`
-	Infobox    []Field  `json:"infobox"` // in file order
-	Body       string   `json:"body"`
-	ImageURL   string   `json:"imageUrl,omitempty"` // preview of the infobox image, when loading
+	Exists     bool        `json:"exists"`
+	Create     bool        `json:"create"`           // on save: fail if the title is taken
+	Title      string      `json:"title"`            // on save: a different title renames the page
+	Folder     string      `json:"folder,omitempty"` // on creating: the folder to put it in
+	Type       string      `json:"type"`
+	Aliases    []string    `json:"aliases"`
+	Categories []string    `json:"categories"`
+	Infobox    []Field     `json:"infobox"` // in file order
+	Images     []InfoImage `json:"images"`  // the infobox pictures, with preview URLs when loading
+	Body       string      `json:"body"`
 }
 
 // Source returns the editable parts of a page; for a missing page it
@@ -34,7 +34,7 @@ func (v *Vault) Source(title string) Source {
 
 	p, ok := v.lookup(title)
 	if !ok {
-		return Source{Title: title, Aliases: []string{}, Categories: []string{}, Infobox: []Field{}}
+		return Source{Title: title, Aliases: []string{}, Categories: []string{}, Infobox: []Field{}, Images: []InfoImage{}}
 	}
 	src := Source{
 		Exists:     true,
@@ -43,12 +43,12 @@ func (v *Vault) Source(title string) Source {
 		Aliases:    nonNil(p.Aliases),
 		Categories: nonNil(p.Categories),
 		Infobox:    nonNil(p.Infobox),
+		Images:     []InfoImage{},
 		Body:       string(p.Body),
 	}
-	for _, f := range p.Infobox {
-		if f.Key == ImageKey {
-			src.ImageURL = v.imageURL(f.Value)
-		}
+	for _, img := range p.Images {
+		img.URL = v.imageURL(img.File)
+		src.Images = append(src.Images, img)
 	}
 	return src
 }
@@ -133,7 +133,7 @@ func (v *Vault) SaveSource(title string, src Source) (string, error) {
 	doc = setOrDelete(doc, "type", strings.TrimSpace(src.Type))
 	doc = setOrDelete(doc, "aliases", aliases)
 	doc = setOrDelete(doc, "categories", cleanList(src.Categories))
-	doc = setOrDelete(doc, "infobox", infoboxYAML(src.Infobox))
+	doc = setOrDelete(doc, "infobox", append(imagesYAML(src.Images), infoboxYAML(src.Infobox)...))
 
 	var out bytes.Buffer
 	if len(doc) > 0 {
@@ -170,6 +170,39 @@ func (v *Vault) SaveSource(title string, src Source) (string, error) {
 		}
 	}
 	return saved, nil
+}
+
+// imagesYAML writes the infobox pictures first in the infobox: one plain,
+// `image` with `caption`; several (or one with a tab label) as a list.
+func imagesYAML(images []InfoImage) yaml.MapSlice {
+	var list []InfoImage
+	for _, img := range images {
+		img.File, img.Label, img.Caption = strings.TrimSpace(img.File), strings.TrimSpace(img.Label), strings.TrimSpace(img.Caption)
+		if img.File != "" {
+			list = append(list, img)
+		}
+	}
+	switch {
+	case len(list) == 0:
+		return nil
+	case len(list) == 1 && list[0].Label == "":
+		out := yaml.MapSlice{{Key: ImageKey, Value: list[0].File}}
+		if list[0].Caption != "" {
+			out = append(out, yaml.MapItem{Key: CaptionKey, Value: list[0].Caption})
+		}
+		return out
+	}
+	items := make([]yaml.MapSlice, len(list))
+	for i, img := range list {
+		items[i] = yaml.MapSlice{{Key: "file", Value: img.File}}
+		if img.Label != "" {
+			items[i] = append(items[i], yaml.MapItem{Key: "label", Value: img.Label})
+		}
+		if img.Caption != "" {
+			items[i] = append(items[i], yaml.MapItem{Key: "caption", Value: img.Caption})
+		}
+	}
+	return yaml.MapSlice{{Key: ImageKey, Value: items}}
 }
 
 // infoboxYAML lays out infobox fields for the frontmatter: fields of no

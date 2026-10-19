@@ -63,7 +63,7 @@ infobox:
 		`<p class="changed">Навчався в Академії Тлінь.`, // a changed line marks its paragraph
 		`<li class="changed">новий пункт</li>`,
 		`<p class="changed">Новий абзац.</p>`, // "Кінець." replaced: changed, not removed
-		`<h2 id="ранні-роки">Ранні роки</h2>`,               // untouched blocks stay plain
+		`<h2 id="ранні-роки">Ранні роки</h2>`, // untouched blocks stay plain
 		`<li>перший пункт</li>`,
 	} {
 		if !strings.Contains(h, want) {
