@@ -117,7 +117,8 @@ export interface PageView {
   redirectedFrom?: string
   aliases: string[]
   categories: string[]
-  infobox: { label: string; html: string; section?: boolean }[]
+  // changed: against the last saved version, when the page differs from it
+  infobox: { label: string; html: string; section?: boolean; changed?: 'added' | 'modified' | 'removed' }[]
   banner?: string // URL of a wide picture across the top
   bannerY?: number // 0..1, the part of it kept in view
   image?: string
@@ -126,6 +127,8 @@ export interface PageView {
   headings: Heading[]
   // The text's date anchors in time order; null when it has none.
   chronology: ChronoEntry[] | null
+  // How the article differs from its last saved version; absent when it does not.
+  changes?: { new?: boolean; blocks: number; fields: number }
   backlinks: string[]
   modified: string
 }

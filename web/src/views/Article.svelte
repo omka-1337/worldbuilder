@@ -1,6 +1,6 @@
 <script lang="ts">
   import { tick } from 'svelte'
-  import { api, key, NotFoundError, pageHref, editHref, categoryHref, type PageView, type Wanted } from '../lib/api'
+  import { api, key, NotFoundError, pageHref, editHref, categoryHref, worldHref, type PageView, type Wanted } from '../lib/api'
   import { store } from '../lib/store.svelte'
   import { openLightbox, type Shot } from '../lib/lightbox.svelte'
 
@@ -55,6 +55,10 @@
   // --- chronology: the text's {{date | description}} anchors --------------
 
   let tab = $state<'article' | 'chronology'>('article')
+
+  // What changed since the last saved version is marked; the author can
+  // turn the marks off for a clean read.
+  let showChanges = $state(true)
 
   // From an entry back to its place in the text, briefly lit up.
   async function goTo(id: string) {
@@ -114,7 +118,7 @@
   {#if view.banner}
     <div class="banner" style:background-image="url('{view.banner}')" style:background-position-y="{(view.bannerY ?? 0.5) * 100}%"></div>
   {/if}
-  <div class="article" class:has-toc={toc.length > 1}>
+  <div class="article" class:has-toc={toc.length > 1} class:show-changes={showChanges}>
     <article>
       <header>
         {#if view.location.length}
@@ -132,6 +136,20 @@
         </div>
         {#if view.redirectedFrom}
           <p class="note">Перенаправлено з «{view.redirectedFrom}»</p>
+        {/if}
+        {#if view.changes}
+          <p class="changes-note">
+            <span class="swatch"></span>
+            {#if view.changes.new}
+              Нова стаття: її ще немає у збережених версіях.
+            {:else}
+              Змінено після останньої збереженої версії{showChanges ? ': зміни підсвічено' : ''}.
+              <button class="link" onclick={() => (showChanges = !showChanges)}>
+                {showChanges ? 'Сховати підсвітку' : 'Показати зміни'}
+              </button>
+            {/if}
+            <a href={worldHref(undefined, '/versions')}>Версії</a>
+          </p>
         {/if}
         {#if view.chronology}
           <div class="tabs" role="tablist" aria-label="Подання статті">
@@ -166,8 +184,8 @@
               {#if row.section}
                 <dt class="ib-section">{row.label}</dt>
               {:else}
-                <dt>{row.label}</dt>
-                <dd>{@html row.html}</dd>
+                <dt class={row.changed ? `ib-${row.changed}` : undefined}>{row.label}</dt>
+                <dd class={row.changed ? `ib-${row.changed}` : undefined}>{@html row.html}</dd>
               {/if}
             {/each}
           </dl>{/if}
@@ -380,6 +398,112 @@
   .ib-image :global(img),
   .prose :global(img) {
     cursor: zoom-in;
+  }
+  .changes-note {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.3rem 0.6rem;
+    margin: 0.3rem 0 0;
+    font-size: 0.85rem;
+    color: var(--text-muted);
+  }
+  .swatch {
+    width: 3px;
+    height: 1em;
+    border-radius: 2px;
+    background: var(--added);
+  }
+  .changes-note button.link {
+    border: none;
+    background: none;
+    padding: 0;
+    color: var(--link);
+    font-size: inherit;
+  }
+  .changes-note button.link:hover {
+    background: none;
+    text-decoration: underline;
+  }
+  /* Changed since the last saved version (internal/vault/changes.go): a
+     green bar beside new or changed blocks, a red notch where text went. */
+  .show-changes :global(.prose .changed),
+  .show-changes :global(.prose .removed-before),
+  .show-changes :global(.prose .removed-after) {
+    position: relative;
+  }
+  .show-changes :global(.prose .changed)::before {
+    content: '';
+    position: absolute;
+    left: -0.8rem;
+    top: 0.15em;
+    bottom: 0.15em;
+    width: 3px;
+    border-radius: 2px;
+    background: var(--added);
+  }
+  .show-changes :global(.prose li.changed)::before {
+    left: -2.2rem;
+  }
+  .show-changes :global(.prose .removed-before)::after,
+  .show-changes :global(.prose .removed-after)::after {
+    content: '';
+    position: absolute;
+    left: -0.95rem;
+    width: 0;
+    height: 0;
+    border-top: 5px solid transparent;
+    border-bottom: 5px solid transparent;
+    border-left: 7px solid var(--removed);
+  }
+  .show-changes :global(.prose .removed-before)::after {
+    top: -0.55em;
+  }
+  .show-changes :global(.prose .removed-after)::after {
+    bottom: -0.75em;
+  }
+  .show-changes :global(.prose li.removed-before)::after,
+  .show-changes :global(.prose li.removed-after)::after {
+    left: -2.35rem;
+  }
+  /* Headings clip what lies outside them (their underline stops at the
+     infobox), so their marks go inside, in a small indent. */
+  .show-changes :global(.prose :is(h1, h2, h3, h4, h5, h6):is(.changed, .removed-before, .removed-after)) {
+    padding-left: 0.7rem;
+  }
+  .show-changes :global(.prose :is(h1, h2, h3, h4, h5, h6).changed) {
+    box-shadow: inset 3px 0 0 var(--added);
+  }
+  .show-changes :global(.prose :is(h1, h2, h3, h4, h5, h6).changed)::before {
+    display: none;
+  }
+  .show-changes :global(.prose :is(h1, h2, h3, h4, h5, h6):is(.removed-before, .removed-after))::after {
+    left: 0;
+    top: 0.1em;
+    bottom: auto;
+  }
+  .show-changes :global(.prose tr.changed td),
+  .show-changes :global(.prose tr.changed th) {
+    background: color-mix(in srgb, var(--added) 14%, transparent);
+  }
+  .show-changes .ib-added {
+    background: color-mix(in srgb, var(--added) 16%, transparent);
+  }
+  .show-changes .ib-modified {
+    background: color-mix(in srgb, var(--changed) 18%, transparent);
+  }
+  .show-changes .ib-removed {
+    color: var(--text-muted);
+    text-decoration: line-through;
+    background: color-mix(in srgb, var(--removed) 10%, transparent);
+  }
+  .show-changes dt[class^='ib-'] {
+    margin-left: -0.5rem;
+    padding-left: 0.5rem;
+  }
+  .show-changes dd[class^='ib-'] {
+    margin-right: -0.5rem;
+    padding-right: 0.5rem;
   }
   .tabs {
     display: flex;

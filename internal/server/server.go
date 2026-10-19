@@ -119,7 +119,13 @@ func (s *server) list(w http.ResponseWriter, r *http.Request, v *vault.Vault) {
 }
 
 func (s *server) get(w http.ResponseWriter, r *http.Request, v *vault.Vault) {
-	view, err := v.Get(titleParam(r))
+	// Next to its last saved version, when the world has versions, so the
+	// page shows what changed since.
+	var saved func(string) ([]byte, bool, error)
+	if repo, err := s.lib.History(r.PathValue("world")); err == nil {
+		saved = repo.Committed
+	}
+	view, err := v.GetCompared(titleParam(r), saved)
 	if err != nil {
 		writeError(w, err)
 		return

@@ -1,6 +1,7 @@
 package vault
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -339,8 +340,10 @@ type View struct {
 	// Chronology is the text's date anchors in time order; nil when the
 	// text has none.
 	Chronology []ChronoEntry `json:"chronology"`
-	Backlinks  []string      `json:"backlinks"`
-	Modified   time.Time     `json:"modified"`
+	// Changes is set when the article differs from its last saved version.
+	Changes   *ViewChanges `json:"changes,omitempty"`
+	Backlinks []string     `json:"backlinks"`
+	Modified  time.Time    `json:"modified"`
 }
 
 // Row is one rendered infobox row.
@@ -348,6 +351,9 @@ type Row struct {
 	Label   string `json:"label"`
 	HTML    string `json:"html"`
 	Section bool   `json:"section,omitempty"` // a heading row grouping the rows below it
+	// Changed is "added", "modified" or "removed" against the last saved
+	// version, when the article is read next to it.
+	Changed string `json:"changed,omitempty"`
 }
 
 // Preview renders article text as its page would show it, for the
@@ -361,6 +367,14 @@ func (v *Vault) Preview(body string) (string, error) {
 
 // Get renders the page with the given title or alias.
 func (v *Vault) Get(title string) (*View, error) {
+	return v.GetCompared(title, nil)
+}
+
+// GetCompared renders the page like Get and, given its file's content in
+// the last saved version (found is false for a file no version has yet),
+// marks what changed since. An error reading the version leaves the page
+// unmarked.
+func (v *Vault) GetCompared(title string, saved func(rel string) (raw []byte, found bool, err error)) (*View, error) {
 	v.mu.RLock()
 	defer v.mu.RUnlock()
 
@@ -368,8 +382,26 @@ func (v *Vault) Get(title string) (*View, error) {
 	if !ok {
 		return nil, ErrNotFound
 	}
+	var changes *ViewChanges
+	var marks *changeMarks
+	var fieldChange map[[2]string]string
+	var removedFields []Field
+	if saved != nil {
+		switch raw, found, err := saved(p.Path); {
+		case err != nil:
+		case !found:
+			changes = &ViewChanges{New: true}
+		case !bytes.Equal(raw, p.Raw):
+			changes = &ViewChanges{}
+			added, removed := lineChanges(Body(raw), Body(p.Raw))
+			marks = &changeMarks{added: added, removed: removed}
+			if old, err := parsePage(p.Path, raw); err == nil {
+				fieldChange, removedFields = fieldChanges(old.Infobox, p.Infobox)
+			}
+		}
+	}
 	col := &anchorCollector{cal: v.cal}
-	html, headings, err := v.renderWith(p.Body, col)
+	html, headings, err := v.renderWith(p.Body, col, marks)
 	if err != nil {
 		return nil, err
 	}
@@ -387,6 +419,9 @@ func (v *Vault) Get(title string) (*View, error) {
 	}
 	if len(col.entries) > 0 {
 		view.Chronology = col.sorted()
+	}
+	if changes != nil && marks != nil {
+		changes.Blocks = marks.blocks
 	}
 	if Key(p.Title) != Key(title) {
 		view.RedirectedFrom = title
@@ -429,7 +464,7 @@ func (v *Vault) Get(title string) (*View, error) {
 	ownRows := func(fields []Field) []Row {
 		var rows []Row
 		for _, f := range fields {
-			rows = append(rows, Row{Label: v.world.fieldLabel(p.Type, f.Key), HTML: v.renderInline(f.Value)})
+			rows = append(rows, Row{Label: v.world.fieldLabel(p.Type, f.Key), HTML: v.renderInline(f.Value), Changed: fieldChange[[2]string{f.Section, f.Key}]})
 		}
 		return rows
 	}
@@ -453,7 +488,7 @@ func (v *Vault) Get(title string) (*View, error) {
 			continue
 		}
 		if val := values[fd.Key]; val != "" {
-			rows = append(rows, Row{Label: fd.Label, HTML: v.renderInline(val)})
+			rows = append(rows, Row{Label: fd.Label, HTML: v.renderInline(val), Changed: fieldChange[[2]string{"", fd.Key}]})
 		}
 	}
 	group(label, append(rows, ownRows(own[key])...))
@@ -464,6 +499,23 @@ func (v *Vault) Get(title string) (*View, error) {
 		}
 	}
 	view.Infobox = append(view.Infobox, ownRows(loose)...)
+	// Fields the saved version had and this one has not, struck out last.
+	for _, f := range removedFields {
+		if f.Key == ImageKey || f.Key == CaptionKey {
+			continue
+		}
+		view.Infobox = append(view.Infobox, Row{Label: v.world.fieldLabel(p.Type, f.Key), HTML: v.renderInline(f.Value), Changed: "removed"})
+	}
+	if changes != nil {
+		for _, r := range view.Infobox {
+			if r.Changed != "" {
+				changes.Fields++
+			}
+		}
+		if changes.New || changes.Blocks+changes.Fields > 0 {
+			view.Changes = changes
+		}
+	}
 	return view, nil
 }
 

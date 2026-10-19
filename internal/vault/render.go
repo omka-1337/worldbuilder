@@ -39,6 +39,7 @@ func newMarkdown(v *Vault) goldmark.Markdown {
 			parser.WithASTTransformers(
 				util.Prioritized(calloutTransformer{}, 100),
 				util.Prioritized(anchorTransformer{}, 110),
+				util.Prioritized(changeTransformer{}, 130),
 			),
 		),
 		goldmark.WithRendererOptions(
@@ -53,15 +54,18 @@ func newMarkdown(v *Vault) goldmark.Markdown {
 // render converts an article body and collects its headings. Callers hold
 // v.mu, since link resolution reads the index.
 func (v *Vault) render(src []byte) (string, []Heading, error) {
-	return v.renderWith(src, nil)
+	return v.renderWith(src, nil, nil)
 }
 
 // renderWith renders like render; with a collector it also gathers the
 // date anchors of the text for the article's chronology.
-func (v *Vault) renderWith(src []byte, col *anchorCollector) (string, []Heading, error) {
+func (v *Vault) renderWith(src []byte, col *anchorCollector, marks *changeMarks) (string, []Heading, error) {
 	ctx := parser.NewContext(parser.WithIDs(&headingIDs{seen: map[string]bool{}}))
 	if col != nil {
 		ctx.Set(anchorsKey, col)
+	}
+	if marks != nil {
+		ctx.Set(changesKey, marks)
 	}
 	doc := v.md.Parser().Parse(text.NewReader(src), parser.WithContext(ctx))
 
