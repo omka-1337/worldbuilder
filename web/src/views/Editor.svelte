@@ -602,6 +602,9 @@
   .body {
     position: relative;
     z-index: 1;
+    /* No elastic bounce at the ends: it moves the text without changing
+       scrollTop, so the coloured layer could not follow. */
+    overscroll-behavior: none;
     color: transparent;
     caret-color: var(--text);
     background: transparent;
