@@ -23,6 +23,7 @@ type Source struct {
 	Categories []string    `json:"categories"`
 	Infobox    []Field     `json:"infobox"` // in file order
 	Images     []InfoImage `json:"images"`  // the infobox pictures, with preview URLs when loading
+	Gallery    []InfoImage `json:"gallery"` // the article's gallery, likewise
 	Body       string      `json:"body"`
 }
 
@@ -34,7 +35,7 @@ func (v *Vault) Source(title string) Source {
 
 	p, ok := v.lookup(title)
 	if !ok {
-		return Source{Title: title, Aliases: []string{}, Categories: []string{}, Infobox: []Field{}, Images: []InfoImage{}}
+		return Source{Title: title, Aliases: []string{}, Categories: []string{}, Infobox: []Field{}, Images: []InfoImage{}, Gallery: []InfoImage{}}
 	}
 	src := Source{
 		Exists:     true,
@@ -44,7 +45,12 @@ func (v *Vault) Source(title string) Source {
 		Categories: nonNil(p.Categories),
 		Infobox:    nonNil(p.Infobox),
 		Images:     []InfoImage{},
+		Gallery:    []InfoImage{},
 		Body:       string(p.Body),
+	}
+	for _, img := range p.Gallery {
+		img.URL = v.imageURL(img.File)
+		src.Gallery = append(src.Gallery, img)
 	}
 	for _, img := range p.Images {
 		img.URL = v.imageURL(img.File)
@@ -134,6 +140,7 @@ func (v *Vault) SaveSource(title string, src Source) (string, error) {
 	doc = setOrDelete(doc, "aliases", aliases)
 	doc = setOrDelete(doc, "categories", cleanList(src.Categories))
 	doc = setOrDelete(doc, "infobox", append(imagesYAML(src.Images), infoboxYAML(src.Infobox)...))
+	doc = setOrDelete(doc, "gallery", galleryYAML(src.Gallery))
 
 	var out bytes.Buffer
 	if len(doc) > 0 {
@@ -205,6 +212,23 @@ func imagesYAML(images []InfoImage) yaml.MapSlice {
 	return yaml.MapSlice{{Key: ImageKey, Value: items}}
 }
 
+// galleryYAML writes the gallery as a list: a picture with a caption as
+// {file, caption}, one without as its embed alone.
+func galleryYAML(gallery []InfoImage) []any {
+	var out []any
+	for _, img := range gallery {
+		file, caption := strings.TrimSpace(img.File), strings.TrimSpace(img.Caption)
+		switch {
+		case file == "":
+		case caption == "":
+			out = append(out, file)
+		default:
+			out = append(out, yaml.MapSlice{{Key: "file", Value: file}, {Key: "caption", Value: caption}})
+		}
+	}
+	return out
+}
+
 // infoboxYAML lays out infobox fields for the frontmatter: fields of no
 // section first, in order, then each section's own fields nested under its
 // key, sections in the order they first appear.
@@ -245,6 +269,8 @@ func setOrDelete(doc yaml.MapSlice, key string, value any) yaml.MapSlice {
 	case []string:
 		empty = len(v) == 0
 	case yaml.MapSlice:
+		empty = len(v) == 0
+	case []any:
 		empty = len(v) == 0
 	}
 	if !empty {

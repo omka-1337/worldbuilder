@@ -38,17 +38,16 @@
   let root = $state<HTMLElement>()
   function onPictureClick(e: MouseEvent) {
     const target = e.target as HTMLElement
-    const picture = target.closest<HTMLElement>('.banner, .ib-image img, .prose img')
+    const picture = target.closest<HTMLElement>('.banner, .ib-image img, .prose img, .gallery img')
     if (!picture || !root || target.closest('a')) return
     const shots: Shot[] = []
     let index = 0
-    for (const el of root.querySelectorAll<HTMLElement>('.banner, .ib-image img, .prose img')) {
+    for (const el of root.querySelectorAll<HTMLElement>('.banner, .ib-image img, .prose img, .gallery img')) {
       const url = el instanceof HTMLImageElement ? el.getAttribute('src') : view?.banner
       if (!url) continue
       if (el === picture) index = shots.length
-      const caption = el.closest('.ib-image')
-        ? el.closest('.ib-image')!.querySelector('figcaption')?.textContent?.trim()
-        : el.getAttribute('alt')
+      const figure = el.closest('.ib-image, .gallery figure')
+      const caption = figure ? figure.querySelector('figcaption')?.textContent?.trim() : el.getAttribute('alt')
       shots.push({ url, caption: caption || undefined })
     }
     openLightbox(shots, index)
@@ -91,8 +90,10 @@
     // Sections usually start at ## (the title is the page's own heading),
     // but notes from other tools often use # for them: start at whatever the
     // article's top level is and go three levels deep.
-    const all = view?.headings ?? []
-    const top = Math.min(...all.map((h) => h.level))
+    const all = [...(view?.headings ?? [])]
+    const top = all.length ? Math.min(...all.map((h) => h.level)) : 2
+    // The gallery is the article's last section.
+    if (view?.gallery.length) all.push({ level: top, text: 'Галерея', id: 'gallery' })
     const heads = all.filter((h) => h.level <= top + 2)
     const counters: number[] = []
     return heads.map((h) => {
@@ -211,6 +212,20 @@
       {/if}
 
       <div class="prose" hidden={tab !== 'article'}>{@html view.html}</div>
+
+      {#if view.gallery.length && tab === 'article'}
+        <section class="gallery" aria-labelledby="gallery">
+          <h2 id="gallery">Галерея</h2>
+          <div class="grid">
+            {#each view.gallery as img, i (i)}
+              <figure>
+                <div class="thumb">{@html img.html}</div>
+                {#if img.caption}<figcaption>{@html img.caption}</figcaption>{/if}
+              </figure>
+            {/each}
+          </div>
+        </section>
+      {/if}
 
       {#if tab === 'chronology' && view.chronology}
         <section class="chronology" aria-label="Хронологія">
@@ -440,7 +455,52 @@
   .ib-section:first-child {
     margin-top: -0.4rem;
   }
+  /* The gallery: as the article's last section, under its own heading. */
+  .gallery {
+    clear: both;
+  }
+  .gallery h2 {
+    font-size: 1.45rem;
+    font-weight: 620;
+    margin: 1.8rem 0 0.8rem;
+    padding-bottom: 0.25rem;
+    border-bottom: 1px solid var(--border);
+    scroll-margin-top: 1rem;
+  }
+  .gallery .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(11rem, 1fr));
+    gap: 0.9rem;
+  }
+  .gallery figure {
+    margin: 0;
+  }
+  .gallery .thumb {
+    aspect-ratio: 4 / 3;
+    border-radius: 8px;
+    overflow: hidden;
+    background: var(--bg-sidebar);
+  }
+  .gallery .thumb :global(img) {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    transition: transform 0.2s;
+  }
+  .gallery .thumb:hover :global(img) {
+    transform: scale(1.03);
+  }
+  .gallery figcaption {
+    margin-top: 0.35rem;
+    font-size: 0.85rem;
+    color: var(--text-muted);
+    text-align: center;
+    border: none;
+    padding: 0;
+  }
   .banner,
+  .gallery :global(img),
   .ib-image :global(img),
   .prose :global(img) {
     cursor: zoom-in;

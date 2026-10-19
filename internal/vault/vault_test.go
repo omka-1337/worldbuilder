@@ -1276,3 +1276,52 @@ func TestImages(t *testing.T) {
 		t.Errorf("images = %s", g)
 	}
 }
+
+func TestGallery(t *testing.T) {
+	files := map[string]string{}
+	for k, v := range fixture {
+		files[k] = v
+	}
+	files["a.png"] = string(tinyPNG)
+	files["b.png"] = string(tinyPNG)
+	v, err := Open(writeWorld(t, files), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if view, _ := v.Get("Вальмор"); len(view.Gallery) != 0 {
+		t.Fatalf("gallery before any = %+v", view.Gallery)
+	}
+
+	src := v.Source("Вальмор")
+	src.Gallery = []InfoImage{
+		{File: "![[a.png]]", Caption: "Вежа, де жив [[Аедрін Сірий]]"},
+		{File: "![[b.png]]"},
+		{File: " "}, // an empty slot is dropped
+	}
+	if _, err := v.SaveSource("Вальмор", src); err != nil {
+		t.Fatal(err)
+	}
+	raw, _ := os.ReadFile(filepath.Join(v.Root(), "Вальмор.md"))
+	if !strings.Contains(string(raw), "gallery:\n- file: \"![[a.png]]\"\n  caption: Вежа, де жив [[Аедрін Сірий]]\n- \"![[b.png]]\"\n") {
+		t.Errorf("file:\n%s", raw)
+	}
+	view, _ := v.Get("Вальмор")
+	if len(view.Gallery) != 2 || !strings.Contains(view.Gallery[0].HTML, "<img") || !strings.Contains(view.Gallery[0].Caption, `class="wikilink"`) || view.Gallery[1].Caption != "" {
+		t.Errorf("gallery = %+v", view.Gallery)
+	}
+	if a, _ := v.Get("Аедрін Сірий"); !slices.Contains(a.Backlinks, "Вальмор") {
+		t.Error("a link in a gallery caption is not indexed")
+	}
+	if s := v.Source("Вальмор"); len(s.Gallery) != 2 || s.Gallery[0].URL == "" {
+		t.Errorf("source gallery = %+v", s.Gallery)
+	}
+
+	// Emptied, the key goes away.
+	src = v.Source("Вальмор")
+	src.Gallery = nil
+	v.SaveSource("Вальмор", src)
+	raw, _ = os.ReadFile(filepath.Join(v.Root(), "Вальмор.md"))
+	if strings.Contains(string(raw), "gallery") {
+		t.Errorf("empty gallery kept:\n%s", raw)
+	}
+}

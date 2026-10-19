@@ -6,6 +6,7 @@
   import AnchorDialog from '../components/AnchorDialog.svelte'
   import LinkDialog from '../components/LinkDialog.svelte'
   import ImagePicker from '../components/ImagePicker.svelte'
+  import GalleryEditor from '../components/GalleryEditor.svelte'
   import { api, key, pageHref, worldHref, HttpError, type FieldDef, type InfoImage } from '../lib/api'
   import { navigate, router } from '../lib/router.svelte'
   import { store, refresh } from '../lib/store.svelte'
@@ -45,6 +46,8 @@
   // Every field set, for the picker and inputs to bind to.
   const slot = (i: InfoImage = { file: '' }) => ({ file: i.file, label: i.label ?? '', caption: i.caption ?? '', url: i.url ?? '' })
   let images = $state([slot()])
+  // The gallery at the article's end; empty, the article shows none.
+  let gallery = $state<{ file: string; caption: string; url: string }[]>([])
 
   let loadedType = ''
   let originalName = $state('')
@@ -71,6 +74,7 @@
       categories = src?.categories ?? []
       body = src?.body ?? ''
       images = src?.images.length ? src.images.map(slot) : [slot()]
+      gallery = (src?.gallery ?? []).map((g) => ({ file: g.file, caption: g.caption ?? '', url: g.url ?? '' }))
       const known = new Set((store.world?.types[type]?.fields ?? []).map((f) => f.key))
       for (const f of src?.infobox ?? []) {
         if (f.section || !known.has(f.key)) extras.push({ key: f.key, section: f.section ?? '', value: f.value })
@@ -237,7 +241,16 @@
       ...schema.map((f) => ({ key: f.key, value: values[f.key] ?? '' })),
       ...extras.map((e) => ({ key: e.key, value: e.value, section: e.section || undefined })),
     ]
-    return { title: name.trim(), type, aliases, categories, infobox, images: pictures, body }
+    return {
+      title: name.trim(),
+      type,
+      aliases,
+      categories,
+      infobox,
+      images: pictures,
+      gallery: gallery.map((g) => ({ file: g.file, caption: g.caption.trim() })),
+      body,
+    }
   }
 
   const dirty = $derived(!loading && JSON.stringify(build()) !== saved)
@@ -504,6 +517,11 @@
         {#if images.every((i) => i.file)}
           <button class="link" onclick={() => images.push(slot())}>+ Ще одне зображення</button>
         {/if}
+      </div>
+
+      <div class="group">
+        <span class="label">Галерея{gallery.length ? ` · ${gallery.length}` : ''}</span>
+        <GalleryEditor bind:items={gallery} title={name || title} />
       </div>
 
       {#if schema.length || extras.length}

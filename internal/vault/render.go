@@ -134,6 +134,10 @@ func (v *Vault) extractLinks(p *Page) (links, images []string) {
 	for _, f := range p.Infobox {
 		collect([]byte(f.Value))
 	}
+	for _, img := range p.Gallery {
+		collect([]byte(img.File))
+		collect([]byte(img.Caption))
+	}
 	return links, images
 }
 

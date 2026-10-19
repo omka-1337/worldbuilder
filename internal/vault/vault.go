@@ -333,7 +333,8 @@ type View struct {
 	Infobox        []Row       `json:"infobox"`
 	Banner         string      `json:"banner,omitempty"` // URL of a wide picture across the top
 	BannerY        float64     `json:"bannerY,omitempty"`
-	Images         []ViewImage `json:"images"` // the infobox pictures; tabs when several
+	Images         []ViewImage `json:"images"`  // the infobox pictures; tabs when several
+	Gallery        []ViewImage `json:"gallery"` // shown at the article's end when not empty
 	HTML           string      `json:"html"`
 	Headings       []Heading   `json:"headings"`
 	// Chronology is the text's date anchors in time order; nil when the
@@ -441,9 +442,12 @@ func (v *Vault) GetCompared(title string, saved func(rel string) (raw []byte, fo
 	def := v.world.Types[p.Type]
 	view.TypeLabel = def.Label
 	values := p.typeValues()
-	view.Images = []ViewImage{}
+	view.Images, view.Gallery = []ViewImage{}, []ViewImage{}
 	for _, img := range p.Images {
 		view.Images = append(view.Images, ViewImage{HTML: v.renderInline(img.File), Label: img.Label, Caption: v.renderInline(img.Caption)})
+	}
+	for _, img := range p.Gallery {
+		view.Gallery = append(view.Gallery, ViewImage{HTML: v.renderInline(img.File), Caption: v.renderInline(img.Caption)})
 	}
 	if p.Banner != "" {
 		view.Banner, view.BannerY = v.imageURL(p.Banner), p.BannerY

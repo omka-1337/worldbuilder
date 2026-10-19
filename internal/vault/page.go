@@ -23,6 +23,7 @@ type Page struct {
 	Infobox    []Field     // in file order, without the pictures
 	Images     []InfoImage // the infobox pictures, first shown first
 	Banner     string      // image embed shown across the top of the article
+	Gallery    []InfoImage // the article's gallery, shown at its end when not empty
 	BannerY    float64     // 0..1, which part of the banner stays visible
 	Raw        []byte      // the whole file, frontmatter included
 	Body       []byte      // Markdown after the frontmatter
@@ -88,6 +89,7 @@ type frontmatter struct {
 	Infobox    yaml.MapSlice `yaml:"infobox"`
 	Banner     string        `yaml:"banner"`   // Obsidian Banners plugin: ![[wide.png]]
 	BannerY    any           `yaml:"banner_y"` // its vertical focus, 0 (top) to 1
+	Gallery    any           `yaml:"gallery"`  // pictures: a list of embeds or {file, caption}
 }
 
 // ParseError reports a malformed frontmatter block.
@@ -124,6 +126,9 @@ func parsePage(rel string, raw []byte) (*Page, error) {
 	}
 	p.textLen = utf8.RuneCount(bytes.TrimSpace(body))
 	p.Banner = strings.TrimSpace(fm.Banner)
+	if fm.Gallery != nil {
+		p.Gallery = infoImages(fm.Gallery)
+	}
 	p.BannerY = 0.5
 	if y, err := strconv.ParseFloat(strings.TrimSpace(fmt.Sprint(fm.BannerY)), 64); err == nil && y >= 0 && y <= 1 {
 		p.BannerY = y
@@ -161,6 +166,9 @@ func parsePage(rel string, raw []byte) (*Page, error) {
 		search.WriteString("\n" + f.Value)
 	}
 	for _, img := range p.Images {
+		search.WriteString("\n" + img.Caption)
+	}
+	for _, img := range p.Gallery {
 		search.WriteString("\n" + img.Caption)
 	}
 	search.WriteString("\n")
