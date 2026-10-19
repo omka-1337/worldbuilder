@@ -4,6 +4,7 @@
   import ChipsInput from '../components/ChipsInput.svelte'
   import ContextMenu, { type MenuItem } from '../components/ContextMenu.svelte'
   import AnchorDialog from '../components/AnchorDialog.svelte'
+  import LinkDialog from '../components/LinkDialog.svelte'
   import ImagePicker from '../components/ImagePicker.svelte'
   import { api, key, pageHref, worldHref, HttpError, type FieldDef } from '../lib/api'
   import { navigate, router } from '../lib/router.svelte'
@@ -139,13 +140,46 @@
     return null
   }
 
+  // A link under the cursor, [[article]] or [[article|text]]; not a picture.
+  let link = $state<{ from: number; to: number; target: string; label: string; editing: boolean } | null>(null)
+
+  function linkAround(pos: number) {
+    for (const m of body.matchAll(/(?<!!)\[\[([^[\]\n]*?)\]\]/g)) {
+      const from = m.index, to = m.index + m[0].length
+      if (from <= pos && pos <= to) {
+        const [target, ...label] = m[1].split('|')
+        return { from, to, target: target.trim(), label: label.join('|').trim(), editing: true }
+      }
+    }
+    return null
+  }
+
+  // The selected text becomes the link: as the article when there is one by
+  // that name, as the text shown otherwise.
+  function newLink(from: number, to: number, selected: string) {
+    const text = selected.trim()
+    const named = text && store.pages.some((p) => [p.title, ...p.aliases].some((n) => key(n) === key(text)))
+    link = { from, to, target: named ? text : '', label: named ? '' : text, editing: false }
+  }
+
+  function saveLink(target: string, label: string) {
+    if (!link) return
+    const { from, to } = link
+    link = null
+    tick().then(() => replace(from, to, label && key(label) !== key(target) ? `[[${target}|${label}]]` : `[[${target}]]`))
+  }
+
   function onBodyMenu(e: MouseEvent) {
     if (e.shiftKey || !bodyInput) return
     e.preventDefault()
     const { selectionStart: from, selectionEnd: to } = bodyInput
     const selected = body.slice(from, to)
     const existing = anchorAround(from)
+    const existingLink = linkAround(from)
     const items: MenuItem[] = [
+      existingLink
+        ? { label: 'Змінити посилання', icon: 'link', run: () => (link = existingLink) }
+        : { label: 'Додати посилання', icon: 'link', run: () => newLink(from, to, selected) },
       existing
         ? { label: 'Змінити дату', icon: 'calendar', run: () => (anchor = existing) }
         : {
@@ -492,10 +526,6 @@
       </div>
     </aside>
 
-    <p class="help muted">
-      <code>[[</code> — посилання на статтю (з підказками), <code>[[Стаття|текст]]</code> — посилання з іншим текстом,
-      <code>## Розділ</code> — заголовок розділу, <code>{'{{'}дата | опис{'}}'}</code> — дата для хронології (права кнопка → «Додати дату»), <code>**жирний**</code>, <code>*курсив*</code>. Ctrl+S — зберегти.
-    </p>
   </div>
 {/if}
 
@@ -521,6 +551,18 @@
 {/snippet}
 
 {#if menu}<ContextMenu {...menu} onclose={() => (menu = null)} />{/if}
+{#if link}
+  <LinkDialog
+    target={link.target}
+    label={link.label}
+    editing={link.editing}
+    onsave={saveLink}
+    oncancel={() => {
+      link = null
+      bodyInput?.focus()
+    }}
+  />
+{/if}
 {#if anchor}
   <AnchorDialog
     date={anchor.date}
@@ -540,7 +582,7 @@
   .editor {
     display: grid;
     grid-template-columns: minmax(0, 1fr) 20rem;
-    grid-template-rows: auto minmax(0, 1fr) auto auto;
+    grid-template-rows: auto minmax(0, 1fr) auto;
     gap: 0.75rem 1.5rem;
     max-width: 76rem;
     height: calc(100vh - 6rem);
@@ -773,14 +815,6 @@
   small {
     font-size: 0.8rem;
   }
-  .help {
-    grid-area: 4 / 1 / 5 / -1;
-    font-size: 0.8rem;
-    margin: 0;
-  }
-  .help code {
-    font-family: var(--mono);
-  }
 
   @media (max-width: 900px) {
     .editor {
@@ -793,8 +827,7 @@
     }
     .body-area,
     .stats,
-    .props,
-    .help {
+    .props {
       grid-area: auto;
     }
     .body {
