@@ -5,6 +5,7 @@
   import Sidebar from './Sidebar.svelte'
   import Dialogs from './Dialogs.svelte'
   import Lightbox from './Lightbox.svelte'
+  import AgentPanel from './AgentPanel.svelte'
   import Ribbon from './Ribbon.svelte'
   import Timeline from '../views/Timeline.svelte'
   import Types from '../views/Types.svelte'
@@ -97,41 +98,44 @@
     <button class="menu-toggle" onclick={() => (menuOpen = !menuOpen)} aria-label="Меню">☰</button>
     <Ribbon />
     {#if !prefs.sidebarHidden}<Sidebar />{/if}
-    <main class:full={route.name === 'timeline'}>
-      <div class="page" style:max-width={pageWidths[route.name]}>
-        {#if loadError}
-          <p class="error">Не вдалося з'єднатися з сервером: {loadError}</p>
-        {:else if !store.world}
-          <p class="muted">Завантаження…</p>
-        {:else if route.name === 'article'}
-          {#key route.arg}<Article title={route.arg} />{/key}
-        {:else if route.name === 'edit'}
-          {#key route.arg}<Editor title={route.arg} />{/key}
-        {:else if route.name === 'category'}
-          {#key route.arg}<CategoryPage name={route.arg} />{/key}
-        {:else if route.name === 'pages'}
-          <AllPages />
-        {:else if route.name === 'categories'}
-          <Categories />
-        {:else if route.name === 'wanted'}
-          <WantedPages />
-        {:else if route.name === 'search'}
-          <SearchResults />
-        {:else if route.name === 'new'}
-          <Editor title="" />
-        {:else if route.name === 'timeline'}
-          <Timeline />
-        {:else if route.name === 'types'}
-          <Types />
-        {:else if route.name === 'calendar'}
-          <Calendar />
-        {:else if route.name === 'versions'}
-          <Versions />
-        {:else}
-          <h1 class="page-title">Сторінку не знайдено</h1>
-        {/if}
-      </div>
-    </main>
+    <div class="main-area">
+      <main class:full={route.name === 'timeline'}>
+        <div class="page" style:max-width={pageWidths[route.name]}>
+          {#if loadError}
+            <p class="error">Не вдалося з'єднатися з сервером: {loadError}</p>
+          {:else if !store.world}
+            <p class="muted">Завантаження…</p>
+          {:else if route.name === 'article'}
+            {#key route.arg}<Article title={route.arg} />{/key}
+          {:else if route.name === 'edit'}
+            {#key route.arg}<Editor title={route.arg} />{/key}
+          {:else if route.name === 'category'}
+            {#key route.arg}<CategoryPage name={route.arg} />{/key}
+          {:else if route.name === 'pages'}
+            <AllPages />
+          {:else if route.name === 'categories'}
+            <Categories />
+          {:else if route.name === 'wanted'}
+            <WantedPages />
+          {:else if route.name === 'search'}
+            <SearchResults />
+          {:else if route.name === 'new'}
+            <Editor title="" />
+          {:else if route.name === 'timeline'}
+            <Timeline />
+          {:else if route.name === 'types'}
+            <Types />
+          {:else if route.name === 'calendar'}
+            <Calendar />
+          {:else if route.name === 'versions'}
+            <Versions />
+          {:else}
+            <h1 class="page-title">Сторінку не знайдено</h1>
+          {/if}
+        </div>
+      </main>
+      {#if prefs.agentOpen}<AgentPanel />{/if}
+    </div>
   </div>
 {/if}
 
@@ -164,8 +168,14 @@
   .layout :global(.sidebar) {
     grid-area: sidebar;
   }
-  main {
+  /* The page, and the assistant's chat beside it when open. */
+  .main-area {
     grid-area: main;
+    display: flex;
+    min-width: 0;
+  }
+  main {
+    flex: 1;
     padding: 2rem clamp(1rem, 4vw, 3.5rem) 4rem;
     min-width: 0;
   }

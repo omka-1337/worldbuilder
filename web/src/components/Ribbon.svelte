@@ -104,6 +104,16 @@
       <Icon name={tool.icon} />
     </a>
   {/each}
+  <button
+    class="tool agent-toggle"
+    class:on={prefs.agentOpen}
+    onclick={() => (prefs.agentOpen = !prefs.agentOpen)}
+    title={prefs.agentOpen ? 'Закрити агента' : 'Агент'}
+    aria-label={prefs.agentOpen ? 'Закрити агента' : 'Відкрити агента'}
+    aria-pressed={prefs.agentOpen}
+  >
+    <Icon name="sparkles" />
+  </button>
   {#if changes.ready}
     <a
       href={worldHref(undefined, '/versions')}
@@ -164,9 +174,15 @@
     background: var(--accent-soft);
     color: var(--accent);
   }
+  .agent-toggle {
+    margin-top: auto; /* the assistant and the history status sit at the bottom */
+  }
+  .tool.on {
+    background: var(--accent-soft);
+    color: var(--accent);
+  }
   .history {
     position: relative;
-    margin-top: auto; /* status at the bottom of the panel */
   }
   .badge {
     position: absolute;
@@ -239,7 +255,7 @@
     .grip {
       display: none;
     }
-    .history {
+    .agent-toggle {
       margin-top: 0;
     }
   }

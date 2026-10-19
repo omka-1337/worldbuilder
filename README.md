@@ -108,12 +108,25 @@ them and saves a new version with a description, written by the author or
 made from the changes. Versions are signed with the Git identity from the
 user's global Git config when there is one.
 
+The assistant (the sparkles button in the tools panel) is a chat beside the
+page. It runs the author's own Claude Code, found on the machine and signed
+in with their Claude account, in the world's folder: `claude -p` with only
+the file tools (read, search, edit, write), so it can work on articles but
+cannot run commands, browse or delete anything. It is told how this app's
+files are written (`internal/agent/rules.go`): frontmatter and infobox keys
+of the world's types, links, pictures, callouts, date anchors, and the
+world's calendar with dates from its articles as examples. The article
+open in the app goes along with each message. An author can add rules for
+one world in `.worldbuilder/agent.md`. Every change it makes shows in the
+versions and can be undone there.
+
 ## Code layout
 
 - `cmd/worldbuilder` — entry point
 - `internal/library` — the library of worlds: listing, creating, opening
 - `internal/vault` — one world: reading files, the link index, Markdown
   rendering, timeline, article types
+- `internal/agent` — the writing assistant: running Claude Code, its rules
 - `internal/history` — a world's versions, kept in Git (go-git)
 - `internal/server` — JSON API and serving the UI
 - `web` — the UI (Svelte), embedded into the binary with `go:embed`

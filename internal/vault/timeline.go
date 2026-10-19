@@ -2,6 +2,7 @@ package vault
 
 import (
 	"math"
+	"slices"
 	"sort"
 	"strings"
 )
@@ -431,6 +432,38 @@ func (c *calendar) parts(d tdate) []UnitPart {
 		if d.has[i] {
 			out = append(out, UnitPart{Unit: u.Name, Value: c.written(i, d.v[i])})
 		}
+	}
+	return out
+}
+
+// DateSamples returns up to n dates as articles write them, readable by
+// the calendar, in distinct shapes where possible: examples for the
+// writing assistant.
+func (v *Vault) DateSamples(n int) []string {
+	v.mu.RLock()
+	defer v.mu.RUnlock()
+	var out []string
+	formats := map[int]bool{}
+	var rest []string
+	for _, d := range v.datedFields(v.cal) {
+		if !d.ok {
+			continue
+		}
+		s := plainDate(d.value)
+		if slices.Contains(out, s) || slices.Contains(rest, s) {
+			continue
+		}
+		if !formats[d.r.format] || (d.r.hasEnd && len(out) < n) {
+			formats[d.r.format] = true
+			out = append(out, s)
+		} else {
+			rest = append(rest, s)
+		}
+	}
+	sort.Strings(rest)
+	out = append(out, rest...)
+	if len(out) > n {
+		out = out[:n]
 	}
 	return out
 }

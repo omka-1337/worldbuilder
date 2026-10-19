@@ -39,6 +39,8 @@ func New(lib *library.Library, ui fs.FS) http.Handler {
 	mux.HandleFunc("GET "+w+"/wanted", s.inWorld(s.wanted))
 	mux.HandleFunc("GET "+w+"/timeline", s.inWorld(s.timeline))
 	mux.HandleFunc("GET "+w+"/tree", s.inWorld(s.tree))
+	mux.HandleFunc("GET "+w+"/agent", s.inWorld(s.agentStatus))
+	mux.HandleFunc("POST "+w+"/agent", s.inWorld(s.agentChat))
 	mux.HandleFunc("POST "+w+"/preview", s.inWorld(s.preview))
 	mux.HandleFunc("GET "+w+"/images", s.inWorld(s.images))
 	mux.HandleFunc("POST "+w+"/move", s.inWorld(s.move))
@@ -63,7 +65,10 @@ func New(lib *library.Library, ui fs.FS) http.Handler {
 	return localOnly(mux)
 }
 
-type server struct{ lib *library.Library }
+type server struct {
+	lib    *library.Library
+	claude claudeBin
+}
 
 type worldHandler func(http.ResponseWriter, *http.Request, *vault.Vault)
 
