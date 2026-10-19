@@ -350,6 +350,15 @@ type Row struct {
 	Section bool   `json:"section,omitempty"` // a heading row grouping the rows below it
 }
 
+// Preview renders article text as its page would show it, for the
+// editor's preview before saving.
+func (v *Vault) Preview(body string) (string, error) {
+	v.mu.RLock()
+	defer v.mu.RUnlock()
+	html, _, err := v.render([]byte(body))
+	return html, err
+}
+
 // Get renders the page with the given title or alias.
 func (v *Vault) Get(title string) (*View, error) {
 	v.mu.RLock()

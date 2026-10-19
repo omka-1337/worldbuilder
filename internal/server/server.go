@@ -39,6 +39,7 @@ func New(lib *library.Library, ui fs.FS) http.Handler {
 	mux.HandleFunc("GET "+w+"/wanted", s.inWorld(s.wanted))
 	mux.HandleFunc("GET "+w+"/timeline", s.inWorld(s.timeline))
 	mux.HandleFunc("GET "+w+"/tree", s.inWorld(s.tree))
+	mux.HandleFunc("POST "+w+"/preview", s.inWorld(s.preview))
 	mux.HandleFunc("GET "+w+"/images", s.inWorld(s.images))
 	mux.HandleFunc("POST "+w+"/move", s.inWorld(s.move))
 	mux.HandleFunc("POST "+w+"/rename", s.inWorld(s.rename))
@@ -165,6 +166,23 @@ func (s *server) timeline(w http.ResponseWriter, r *http.Request, v *vault.Vault
 
 func (s *server) images(w http.ResponseWriter, r *http.Request, v *vault.Vault) {
 	writeJSON(w, v.Images())
+}
+
+// preview renders text not saved yet, for the editor.
+func (s *server) preview(w http.ResponseWriter, r *http.Request, v *vault.Vault) {
+	var req struct {
+		Text string `json:"text"`
+	}
+	if err := json.NewDecoder(io.LimitReader(r.Body, 10<<20)).Decode(&req); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	html, err := v.Preview(req.Text)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	writeJSON(w, map[string]string{"html": html})
 }
 
 func (s *server) tree(w http.ResponseWriter, r *http.Request, v *vault.Vault) {

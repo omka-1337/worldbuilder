@@ -97,6 +97,7 @@
   .clip {
     position: absolute;
     inset: 1px;
+    z-index: 2; /* over the textarea */
     overflow: hidden;
     pointer-events: none;
   }

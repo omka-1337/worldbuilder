@@ -14,6 +14,7 @@
   import { lineChanges } from '../lib/linediff'
   import { plural } from '../lib/format'
   import ChangeGutter from '../components/ChangeGutter.svelte'
+  import HighlightLayer from '../components/HighlightLayer.svelte'
 
   // The article being edited; empty for a brand-new one from "New article".
   let { title }: { title: string } = $props()
@@ -100,6 +101,24 @@
   const chars = $derived([...body.replaceAll('\n', '')].length)
   const words = $derived(body.match(/[\p{L}\p{N}][\p{L}\p{N}'’ʼ-]*/gu)?.length ?? 0)
   const count = (n: number) => n.toLocaleString('uk')
+
+  // --- preview ---------------------------------------------------------------
+
+  let previewing = $state(false)
+  let previewHTML = $state('')
+  async function showPreview(on: boolean) {
+    previewing = on
+    if (on) {
+      try {
+        previewHTML = await api.preview(body)
+      } catch (e) {
+        previewHTML = `<p class="warn">Не вдалося показати: ${String(e)}</p>`
+      }
+    } else {
+      await tick()
+      bodyInput?.focus()
+    }
+  }
 
   // --- date anchors: {{date | description}} --------------------------------
 
@@ -342,7 +361,13 @@
       </button>
     </div>
 
-    <div class="body-wrap">
+    <div class="body-area">
+    <div class="modes" role="tablist" aria-label="Текст чи перегляд">
+      <button role="tab" aria-selected={!previewing} class:on={!previewing} onclick={() => showPreview(false)}>Текст</button>
+      <button role="tab" aria-selected={previewing} class:on={previewing} onclick={() => showPreview(true)}>Перегляд</button>
+    </div>
+    <div class="body-wrap" hidden={previewing}>
+      <HighlightLayer textarea={bodyInput} text={body} />
       <textarea
         id="body"
         class="body"
@@ -355,6 +380,10 @@
         aria-label="Текст статті"
       ></textarea>
       <ChangeGutter textarea={bodyInput} text={body} {changes} />
+    </div>
+    {#if previewing}
+      <div class="preview prose" aria-label="Перегляд статті">{@html previewHTML}</div>
+    {/if}
     </div>
 
     <div class="stats" aria-live="off">
@@ -551,11 +580,70 @@
     color: var(--danger);
   }
 
-  .body-wrap {
+  .body-area {
     grid-area: 2 / 1;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+  }
+  .body-wrap {
+    flex: 1;
     position: relative;
     display: grid;
     min-height: 0;
+    overflow: hidden; /* the measuring copies inside must not stretch the page */
+    border-radius: 6px;
+    background: var(--bg-raised);
+  }
+  .body-wrap[hidden] {
+    display: none;
+  }
+  /* The letters are drawn by the coloured layer under the textarea. */
+  .body {
+    position: relative;
+    z-index: 1;
+    color: transparent;
+    caret-color: var(--text);
+    background: transparent;
+  }
+  .body::placeholder {
+    color: var(--text-muted);
+  }
+  .body::selection {
+    color: transparent;
+    background: color-mix(in srgb, var(--accent) 30%, transparent);
+  }
+  .preview {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    padding: 1rem 1.4rem;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: var(--bg-raised);
+  }
+  .modes {
+    display: flex;
+    gap: 0.2rem;
+    margin-bottom: 0.4rem;
+  }
+  .modes button {
+    padding: 0.2rem 0.7rem;
+    border: none;
+    border-bottom: 2px solid transparent;
+    border-radius: 0;
+    background: none;
+    color: var(--text-muted);
+    font-size: 0.9rem;
+  }
+  .modes button:hover {
+    color: var(--text);
+    background: none;
+  }
+  .modes button.on {
+    color: var(--text);
+    border-bottom-color: var(--accent);
+    font-weight: 600;
   }
   .stats {
     grid-area: 3 / 1;
@@ -700,7 +788,7 @@
     .actions {
       justify-content: flex-start;
     }
-    .body-wrap,
+    .body-area,
     .stats,
     .props,
     .help {

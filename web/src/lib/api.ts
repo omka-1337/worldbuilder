@@ -265,6 +265,8 @@ export const api = {
   timeline: () => get<Timeline>(`${w()}/timeline`),
   tree: () => get<TreeNode[]>(`${w()}/tree`),
   // Every picture of the world with the articles showing it.
+  // Renders unsaved article text as the page would show it.
+  preview: async (text: string) => (await send<{ html: string }>('POST', `${w()}/preview`, { text })).html,
   images: () => get<{ name: string; url: string; pages: string[] }[]>(`${w()}/images`),
   // Stores a picture for the article's infobox; returns the name to embed.
   async uploadImage(title: string, file: Blob): Promise<{ name: string; url: string }> {
