@@ -91,11 +91,12 @@
   <div
     class="layout ribbon-{prefs.ribbon}"
     class:menu-open={menuOpen}
+    class:no-sidebar={prefs.sidebarHidden}
     style:--sidebar-width="{Math.min(Math.max(prefs.sidebar, SIDEBAR.min), SIDEBAR.max)}px"
   >
     <button class="menu-toggle" onclick={() => (menuOpen = !menuOpen)} aria-label="Меню">☰</button>
     <Ribbon />
-    <Sidebar />
+    {#if !prefs.sidebarHidden}<Sidebar />{/if}
     <main class:full={route.name === 'timeline'}>
       <div class="page" style:max-width={pageWidths[route.name]}>
         {#if loadError}
@@ -147,6 +148,15 @@
   .layout.ribbon-right {
     grid-template-columns: var(--sidebar-width) minmax(0, 1fr) 3rem;
     grid-template-areas: 'sidebar main ribbon';
+  }
+  /* The article tree hidden: the article takes its room. */
+  .layout.ribbon-left.no-sidebar {
+    grid-template-columns: 3rem minmax(0, 1fr);
+    grid-template-areas: 'ribbon main';
+  }
+  .layout.ribbon-right.no-sidebar {
+    grid-template-columns: minmax(0, 1fr) 3rem;
+    grid-template-areas: 'main ribbon';
   }
   .layout :global(.ribbon) {
     grid-area: ribbon;

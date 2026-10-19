@@ -63,11 +63,21 @@
     addEventListener('pointerup', up)
   }
 
+  // Ctrl+\ shows or hides the article tree from anywhere.
+  function onKeydown(e: KeyboardEvent) {
+    if ((e.ctrlKey || e.metaKey) && e.key === '\\') {
+      e.preventDefault()
+      prefs.sidebarHidden = !prefs.sidebarHidden
+    }
+  }
+
   // Keyboard users move the panel with Enter/Space on the grip.
   function onGripClick(e: MouseEvent) {
     if (e.detail === 0) prefs.ribbon = prefs.ribbon === 'left' ? 'right' : 'left'
   }
 </script>
+
+<svelte:window onkeydown={onKeydown} />
 
 <nav class="ribbon" aria-label="Інструменти">
   <button
@@ -78,6 +88,16 @@
     aria-label="Перемістити панель на інший бік"
   >
     <Icon name="grip" size={16} />
+  </button>
+  <button
+    class="tool"
+    class:active={!prefs.sidebarHidden}
+    onclick={() => (prefs.sidebarHidden = !prefs.sidebarHidden)}
+    title={prefs.sidebarHidden ? 'Показати панель статей (Ctrl+\\)' : 'Сховати панель статей (Ctrl+\\)'}
+    aria-label={prefs.sidebarHidden ? 'Показати панель статей' : 'Сховати панель статей'}
+    aria-pressed={!prefs.sidebarHidden}
+  >
+    <Icon name="sidebar" />
   </button>
   {#each tools as tool (tool.sub)}
     <a href={worldHref(undefined, tool.sub)} class:active={isActive(tool.sub)} title={tool.label} aria-label={tool.label}>
@@ -118,7 +138,8 @@
     background: var(--bg-sidebar);
   }
   a,
-  .grip {
+  .grip,
+  .tool {
     display: grid;
     place-items: center;
     width: 2.25rem;
@@ -126,8 +147,17 @@
     border-radius: 7px;
     color: var(--text-muted);
   }
-  a:hover {
+  a:hover,
+  .tool:hover {
     background: var(--bg-hover);
+    color: var(--text);
+  }
+  .tool {
+    padding: 0;
+    border: none;
+    background: none;
+  }
+  .tool.active {
     color: var(--text);
   }
   a.active {
