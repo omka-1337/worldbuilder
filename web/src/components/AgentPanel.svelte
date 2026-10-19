@@ -1,10 +1,11 @@
 <script lang="ts">
   import { tick } from 'svelte'
   import Icon from './Icon.svelte'
-  import { worldHref } from '../lib/api'
+  import { key, worldHref, type TreeNode } from '../lib/api'
+  import { store } from '../lib/store.svelte'
   import { router, titleFrom } from '../lib/router.svelte'
   import { prefs } from '../lib/prefs.svelte'
-  import { chat, loadChat, send, stop, newChat, type Part } from '../lib/agent.svelte'
+  import { chat, loadChat, send, stop, newChat, type Part, type Mention } from '../lib/agent.svelte'
 
   loadChat()
 
@@ -33,8 +34,101 @@
   function submit() {
     const text = input.trim()
     if (!text || chat.running) return
+    const pointed = present // before the field empties: they are read from it
     input = ''
-    send(text, article || undefined)
+    mentions = []
+    send(text, article || undefined, pointed)
+  }
+
+  // --- @ mentions: point the assistant at articles and folders ------------
+
+  let mentions = $state<Mention[]>([])
+  // Only those still written in the message count.
+  const present = $derived(mentions.filter((m) => input.includes('@' + m.label)))
+
+  // Everything that can be pointed at: articles by title, folders by path.
+  const targets = $derived.by(() => {
+    const out: (Mention & { hint?: string; aliases: string[] })[] = store.pages.map((p) => ({
+      label: p.title,
+      title: p.title,
+      aliases: p.aliases,
+    }))
+    const walk = (nodes: TreeNode[]) => {
+      for (const n of nodes) {
+        if (!n.title) out.push({ label: n.path + '/', folder: n.path, aliases: [] })
+        if (n.children) walk(n.children)
+      }
+    }
+    walk(store.tree)
+    return out
+  })
+
+  let query = $state<{ at: number; text: string } | null>(null)
+  let active = $state(0)
+
+  // The @ being typed, from the cursor back: after a space or at the start,
+  // within the line.
+  function findQuery() {
+    if (!field) return (query = null)
+    const caret = field.selectionStart
+    const before = input.slice(0, caret)
+    const at = before.lastIndexOf('@')
+    if (at < 0 || (at > 0 && !/\s/.test(before[at - 1]))) return (query = null)
+    const text = before.slice(at + 1)
+    query = text.includes('\n') || text.length > 60 ? null : { at, text }
+    active = 0
+  }
+
+  const suggestions = $derived.by(() => {
+    if (!query) return []
+    const q = key(query.text)
+    const scored = targets
+      .map((t) => {
+        const names = [t.label, ...t.aliases].map(key)
+        const starts = names.some((n) => n.startsWith(q))
+        const has = starts || names.some((n) => n.includes(q))
+        return { t, rank: !has ? -1 : starts ? 0 : 1 }
+      })
+      .filter((s) => s.rank >= 0)
+    scored.sort((a, b) => a.rank - b.rank || Number(!!a.t.folder) - Number(!!b.t.folder) || a.t.label.length - b.t.label.length)
+    return scored.slice(0, 8).map((s) => s.t)
+  })
+
+  async function choose(t: Mention) {
+    if (!query || !field) return
+    const end = field.selectionStart
+    const insert = '@' + t.label + ' '
+    input = input.slice(0, query.at) + insert + input.slice(end)
+    if (!mentions.some((m) => m.label === t.label)) mentions.push({ label: t.label, title: t.title, folder: t.folder })
+    const caret = query.at + insert.length
+    query = null
+    await tick()
+    field.focus()
+    field.setSelectionRange(caret, caret)
+  }
+
+  function onFieldKeydown(e: KeyboardEvent) {
+    if (query && suggestions.length) {
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+        e.preventDefault()
+        active = (active + (e.key === 'ArrowDown' ? 1 : suggestions.length - 1)) % suggestions.length
+        return
+      }
+      if (e.key === 'Enter' || e.key === 'Tab') {
+        e.preventDefault()
+        choose(suggestions[active])
+        return
+      }
+      if (e.key === 'Escape') {
+        e.preventDefault()
+        query = null
+        return
+      }
+    }
+    if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) {
+      e.preventDefault()
+      submit()
+    }
   }
 
   const verbs: Record<string, string> = {
@@ -100,6 +194,13 @@
           {#if m.role === 'user'}
             {#if m.article}<div class="context muted">Стаття: {m.article}</div>{/if}
             <div class="bubble">{(m.parts[0] as { text: string }).text}</div>
+            {#if m.mentions?.length}
+              <div class="chips sent">
+                {#each m.mentions as t (t.label)}
+                  <span class="chip"><Icon name={t.folder ? 'folder' : 'file'} size={12} />{t.folder ? t.label : t.title}</span>
+                {/each}
+              </div>
+            {/if}
           {:else}
             {#each m.parts as p, j (j)}
               {#if p.kind === 'tool'}
@@ -137,18 +238,36 @@
       }}
     >
       {#if article}<div class="context muted">Стаття: {article}</div>{/if}
+      {#if present.length}
+        <div class="chips">
+          {#each present as t (t.label)}
+            <span class="chip"><Icon name={t.folder ? 'folder' : 'file'} size={12} />{t.folder ? t.label : t.title}</span>
+          {/each}
+        </div>
+      {/if}
+      {#if query && suggestions.length}
+        <ul class="mentions" role="listbox" aria-label="Статті й папки">
+          {#each suggestions as t, i (t.label)}
+            <li role="option" aria-selected={i === active}>
+              <button type="button" class:on={i === active} onmousedown={(e) => (e.preventDefault(), choose(t))}>
+                <Icon name={t.folder ? 'folder' : 'file'} size={14} />
+                <span class="name">{t.folder ? t.label : t.title}</span>
+              </button>
+            </li>
+          {/each}
+        </ul>
+      {/if}
       <textarea
         bind:this={field}
         bind:value={input}
         rows="3"
-        placeholder="Повідомлення агенту…  (Enter — надіслати, Shift+Enter — новий рядок)"
+        placeholder="Повідомлення агенту…  @ — вказати статтю чи папку"
         aria-label="Повідомлення агенту"
-        onkeydown={(e) => {
-          if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) {
-            e.preventDefault()
-            submit()
-          }
-        }}
+        oninput={findQuery}
+        onclick={findQuery}
+        onkeyup={(e) => (e.key === 'ArrowLeft' || e.key === 'ArrowRight') && findQuery()}
+        onblur={() => (query = null)}
+        onkeydown={onFieldKeydown}
       ></textarea>
       <div class="row">
         {#if chat.status?.version}<span class="muted small">{chat.status.version}</span>{/if}
@@ -322,8 +441,70 @@
     }
   }
   .compose {
+    position: relative;
     padding: 0.6rem 0.8rem 0.8rem;
     border-top: 1px solid var(--border);
+  }
+  .chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.3rem;
+    margin-bottom: 0.35rem;
+  }
+  .chips.sent {
+    justify-content: flex-end;
+    margin: 0.3rem 0 0;
+  }
+  .chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    padding: 0.1rem 0.45rem;
+    border-radius: 999px;
+    background: var(--accent-soft);
+    color: var(--accent);
+    font-size: 0.78rem;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  /* Suggestions for @, above the field. */
+  .mentions {
+    position: absolute;
+    left: 0.8rem;
+    right: 0.8rem;
+    bottom: calc(100% - 0.2rem);
+    z-index: 5;
+    list-style: none;
+    margin: 0;
+    padding: 0.25rem;
+    background: var(--bg-raised);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    box-shadow: 0 8px 24px rgb(0 0 0 / 0.18);
+  }
+  .mentions button {
+    display: flex;
+    align-items: center;
+    gap: 0.45rem;
+    width: 100%;
+    padding: 0.3rem 0.5rem;
+    border: none;
+    border-radius: 5px;
+    background: none;
+    color: var(--text);
+    text-align: left;
+    font-size: 0.88rem;
+  }
+  .mentions button.on {
+    background: var(--accent-soft);
+    color: var(--accent);
+  }
+  .mentions .name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
   .compose .context {
     text-align: left;

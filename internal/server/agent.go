@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 
 	"worldbuilder/internal/agent"
@@ -52,9 +53,13 @@ func (s *server) agentStatus(w http.ResponseWriter, r *http.Request, v *vault.Va
 // answer back as lines of JSON, one agent.Event each.
 func (s *server) agentChat(w http.ResponseWriter, r *http.Request, v *vault.Vault) {
 	var req struct {
-		Message string `json:"message"`
-		Session string `json:"session"`
-		Article string `json:"article"` // the title open in the app, if any
+		Message  string `json:"message"`
+		Session  string `json:"session"`
+		Article  string `json:"article"` // the title open in the app, if any
+		Mentions []struct {
+			Title  string `json:"title"`  // an article
+			Folder string `json:"folder"` // or a folder, relative to the world
+		} `json:"mentions"`
 	}
 	if err := json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&req); err != nil || req.Message == "" {
 		http.Error(w, "a message is needed", http.StatusBadRequest)
@@ -67,6 +72,28 @@ func (s *server) agentChat(w http.ResponseWriter, r *http.Request, v *vault.Vaul
 	}
 
 	prompt := req.Message
+	// What the author pointed at with @: only articles and folders that are
+	// there, inside the world.
+	var mentioned []agent.Mentioned
+	for _, m := range req.Mentions {
+		switch {
+		case m.Title != "":
+			if path, ok := v.PathOf(m.Title); ok {
+				mentioned = append(mentioned, agent.Mentioned{Title: m.Title, Path: path})
+			}
+		case m.Folder != "":
+			dir := filepath.ToSlash(filepath.Clean(m.Folder))
+			abs := filepath.Join(v.Root(), filepath.FromSlash(dir))
+			if rel, err := filepath.Rel(v.Root(), abs); err == nil && !strings.HasPrefix(rel, "..") && rel != "." {
+				if info, err := os.Stat(abs); err == nil && info.IsDir() {
+					mentioned = append(mentioned, agent.Mentioned{Path: dir + "/"})
+				}
+			}
+		}
+	}
+	if note := agent.Mentions(mentioned); note != "" {
+		prompt += "\n\n" + note
+	}
 	if req.Article != "" {
 		if path, ok := v.PathOf(req.Article); ok {
 			prompt += "\n\n" + agent.Describe(req.Article, path)

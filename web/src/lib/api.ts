@@ -284,12 +284,18 @@ export const api = {
   preview: async (text: string) => (await send<{ html: string }>('POST', `${w()}/preview`, { text })).html,
   agentStatus: () => get<{ available: boolean; version?: string; rulesFile: string }>(`${w()}/agent`),
   // Sends a message to the assistant; the answer streams back as JSON lines.
-  agentChat: async (message: string, session: string, article: string | undefined, signal: AbortSignal) =>
+  agentChat: async (
+    message: string,
+    session: string,
+    article: string | undefined,
+    mentions: { title?: string; folder?: string }[],
+    signal: AbortSignal,
+  ) =>
     check(
       await fetch(`${w()}/agent`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message, session, article }),
+        body: JSON.stringify({ message, session, article, mentions }),
         signal,
       }),
     ),

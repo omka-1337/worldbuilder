@@ -224,6 +224,32 @@ func Version(ctx context.Context, bin string) string {
 	return strings.TrimSpace(string(out))
 }
 
+// Mentioned is something the author pointed at with @ in a message: an
+// article (with its file) or a folder of the world.
+type Mentioned struct {
+	Title string // an article's title; empty for a folder
+	Path  string // the file, or the folder ending in "/"
+}
+
+// Mentions is the note added after a message naming what the author
+// pointed at, so the assistant reads those files first.
+func Mentions(items []Mentioned) string {
+	if len(items) == 0 {
+		return ""
+	}
+	var b strings.Builder
+	b.WriteString("[App note, not written by the author: the @ mentions in the message point at these; read them before answering.")
+	for _, m := range items {
+		if m.Title != "" {
+			fmt.Fprintf(&b, "\n- the article %q: file %s", m.Title, m.Path)
+		} else {
+			fmt.Fprintf(&b, "\n- the folder %s: the articles in it and its subfolders", m.Path)
+		}
+	}
+	b.WriteString("]")
+	return b.String()
+}
+
 // Describe is the note added after a message about the article open in
 // the app, so "this article" means something.
 func Describe(title, path string) string {

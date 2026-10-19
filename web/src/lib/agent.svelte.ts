@@ -7,11 +7,19 @@ import { refresh } from './store.svelte'
 
 export type Part = { kind: 'text'; text: string; html?: string } | { kind: 'tool'; tool: string; target: string }
 
+// What the author points at with @: an article, or a folder of the world.
+export interface Mention {
+  label: string // as written after @ in the message
+  title?: string
+  folder?: string
+}
+
 export interface ChatMessage {
   role: 'user' | 'assistant'
   parts: Part[]
   error?: string
   article?: string // the article open when the author wrote it
+  mentions?: Mention[]
 }
 
 export interface AgentStatus {
@@ -77,9 +85,9 @@ export function stop() {
   controller = null
 }
 
-export async function send(text: string, article?: string) {
+export async function send(text: string, article?: string, mentions: Mention[] = []) {
   if (!text.trim() || chat.running) return
-  chat.messages.push({ role: 'user', parts: [{ kind: 'text', text }], article })
+  chat.messages.push({ role: 'user', parts: [{ kind: 'text', text }], article, mentions })
   chat.messages.push({ role: 'assistant', parts: [] })
   const answer = chat.messages[chat.messages.length - 1]
   chat.running = true
@@ -92,7 +100,13 @@ export async function send(text: string, article?: string) {
   }
 
   try {
-    const res = await api.agentChat(text, chat.session, article, controller.signal)
+    const res = await api.agentChat(
+      text,
+      chat.session,
+      article,
+      mentions.map(({ title, folder }) => ({ title, folder })),
+      controller.signal,
+    )
     const reader = res.body!.getReader()
     const decoder = new TextDecoder()
     let buffer = ''

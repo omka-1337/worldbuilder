@@ -82,3 +82,15 @@ func TestRules(t *testing.T) {
 		t.Errorf("plain-year rules:\n%s", plain)
 	}
 }
+
+func TestMentions(t *testing.T) {
+	if Mentions(nil) != "" {
+		t.Error("a note without mentions")
+	}
+	got := Mentions([]Mentioned{{Title: "ТАТ", Path: "СИСТЕМИ/ТАТ.md"}, {Path: "СИСТЕМИ/Сайнора/"}})
+	for _, want := range []string{`the article "ТАТ": file СИСТЕМИ/ТАТ.md`, "the folder СИСТЕМИ/Сайнора/:"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("note lacks %q:\n%s", want, got)
+		}
+	}
+}
